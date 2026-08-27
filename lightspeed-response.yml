@@ -1,1 +1,19 @@
-patate
+---
+- name: Remediation
+  hosts: arduino.jfbourque.ca
+  become: no
+  gather_facts: no
+  remote_user: root
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+    - name: Ensure httpd service is started
+      ansible.builtin.systemd:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Log the deployment
+      ansible.builtin.debug:
+        msg: "httpd service restored. Normal behavior resumed."
