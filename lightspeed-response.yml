@@ -1,32 +1,30 @@
-- name: Remediate httpd service issues on RHEL server
+- name: Remediate httpd service issue on RHEL server
   hosts: all
   become: true
   vars:
+    override_conf_path: /etc/systemd/system/httpd.service.d/override.conf
     httpd_service_name: httpd
-    httpd_config_file: /etc/httpd/conf/httpd.conf
-    server_name: arduino.jfbourque.ca
-    options_value: ''
   tasks:
-  - name: Set OPTIONS environment variable
-    ansible.builtin.lineinfile:
-      path: /etc/systemd/system/httpd.service.d/override.conf
-      line: OPTIONS={{ options_value }}
-      state: present
-      create: true
-    notify: restart httpd
-  - name: Configure ServerName directive
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      line: ServerName {{ server_name }}
-      state: present
-    notify: restart httpd
+  - name: Remove problematic override.conf file
+    ansible.builtin.file:
+      path: '{{ override_conf_path }}'
+      state: absent
+  - name: Reload systemd configuration
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: reloaded
+  - name: Restart httpd service if it's running
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: restarted
+      enabled: true
   - name: Ensure httpd service is enabled and running
-    ansible.builtin.service:
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: restart httpd
-    ansible.builtin.service:
+  - name: restart httpd service
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: restarted
