@@ -1,19 +1,35 @@
----
-- name: Remediation
-  hosts: arduino.jfbourque.ca
-  become: no
-  gather_facts: no
-  remote_user: root
+- name: Remediate httpd service issue on RHEL
+  hosts: all
+  gather_facts: true
   vars:
-    ansible_python_interpreter: /usr/bin/python3
-
+    httpd_service_file: /usr/lib/systemd/system/httpd.service
   tasks:
-    - name: Ensure httpd service is started
-      ansible.builtin.systemd:
-        name: httpd
-        state: started
-        enabled: yes
-
-    - name: Log the deployment
-      ansible.builtin.debug:
-        msg: "httpd service restored. Normal behavior resumed."
+  - name: Update httpd service file to handle OPTIONS variable
+    ansible.builtin.replace:
+      path: '{{ httpd_service_file }}'
+      regexp: ^ExecStart=.*OPTIONS
+      replace: ExecStart=/usr/sbin/httpd $OPTIONS
+      state: present
+  - name: Reload systemd to apply changes
+    ansible.builtin.systemd:
+      name: systemd
+      state: started
+      action: daemon-reload
+  - name: Start and enable httpd service
+    ansible.builtin.service:
+      name: httpd
+      state: started
+      enabled: true
+  - name: Verify httpd service status
+    ansible.builtin.service:
+      name: httpd
+      state: started
+      enabled: true
+  handlers:
+  - name: Restart httpd after config changes
+    ansible.builtin.service:
+      name: httpd
+      state: started
+      enabled: true
+      trigger:
+      - changed: true
