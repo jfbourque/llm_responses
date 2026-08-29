@@ -3,38 +3,33 @@
   become: true
   vars:
     httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    override_conf_file: /etc/systemd/system/httpd.service.d/override.conf
   tasks:
-  - name: Check if httpd configuration file exists
-    ansible.builtin.stat:
-      path: '{{ httpd_config_file }}'
-    register: httpd_config_file_stat
-  - name: Correct syntax error in httpd configuration file
+  - name: Correct the Apache configuration file
     ansible.builtin.lineinfile:
       path: '{{ httpd_config_file }}'
-      line: ''
+      line: '# InvalidDirectiveHere'
       state: absent
-      search_string: ^InvalidDirectiveHere
-    when: httpd_config_file_stat.stat.exists
-  - name: Validate httpd configuration syntax
-    ansible.builtin.command:
-      cmd: apachectl configtest
-    register: httpd_config_test
-    changed_when: false
-  - name: Restart httpd service if configuration syntax is valid
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
-    when: httpd_config_test.rc == 0
-  - name: Verify httpd service status
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+    notify: restart httpd
+  - name: Verify and correct the override file
+    ansible.builtin.copy:
+      content: ''
+      dest: '{{ override_conf_file }}'
+      mode: '0644'
+    when: '{{ override_conf_file }} is file and not (lookup(''file'', override_conf_file)
+      | regex_replace(''\s+'', '''') | regex_replace(''^\[.*\]$'', '''') | length
+      > 0)'
+  - name: Reload systemd daemon
+    ansible.builtin.systemd:
+      name: httpd
+      state: reloaded
+  - name: Ensure httpd service is running and enabled
+    ansible.builtin.systemd:
+      name: httpd
       state: started
       enabled: true
   handlers:
-  - name: restart httpd service
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+  - name: restart httpd
+    ansible.builtin.systemd:
+      name: httpd
       state: restarted
-      enabled: true
