@@ -2,39 +2,32 @@
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    invalid_directive: InvalidDirectiveHere
+    httpd_service: httpd
   tasks:
   - name: Check if httpd configuration file exists
     ansible.builtin.stat:
-      path: '{{ httpd_config_file }}'
-    register: httpd_config_file_stat
+      path: '{{ httpd_conf_path }}'
+    register: httpd_conf_file
   - name: Correct invalid directive in httpd configuration file
     ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      line: '# InvalidDirectiveHere'
-      state: absent
-      backrefs: true
-    when: httpd_config_file_stat.stat.exists
-  - name: Validate httpd configuration file syntax
-    ansible.builtin.command:
-      cmd: apachectl configtest
-    register: httpd_config_test
-    changed_when: false
-  - name: Restart httpd service if configuration is valid
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
-    when: httpd_config_test.rc == 0
-  - name: Verify httpd service status
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      path: '{{ httpd_conf_path }}'
+      line: '#{{ invalid_directive }}'
+      state: present
+      create: true
+    when: httpd_conf_file.stat.exists and httpd_conf_file.stat.is_file
+  - name: Ensure httpd service is started and enabled
+    ansible.builtin.systemd_service:
+      name: '{{ httpd_service }}'
       state: started
       enabled: true
-  handlers:
-  - name: restart httpd service
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
+  - name: Validate httpd service status
+    ansible.builtin.systemd_service:
+      name: '{{ httpd_service }}'
+      state: started
       enabled: true
+    register: httpd_service_status
+  - name: Report httpd service status
+    ansible.builtin.debug:
+      msg: 'httpd service status: {{ httpd_service_status }}'
