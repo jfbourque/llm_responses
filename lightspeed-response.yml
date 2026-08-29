@@ -2,31 +2,39 @@
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
-    override_conf_path: /etc/systemd/system/httpd.service.d/override.conf
+    httpd_config_file: /etc/httpd/conf/httpd.conf
+    override_config_file: /etc/httpd/conf/override.conf
+    httpd_service_name: httpd
   tasks:
-  - name: Correct syntax error in httpd.conf
+  - name: Check if httpd configuration file exists
+    ansible.builtin.stat:
+      path: '{{ httpd_config_file }}'
+    register: httpd_config_file_stat
+  - name: Correct invalid directive in httpd configuration file
     ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      line: '# Corrected directive, example: Listen 80'
-      insertafter: ^(Listen).*
-      backrefs: true
+      path: '{{ httpd_config_file }}'
+      state: absent
+      line: InvalidDirectiveHere
+    when: httpd_config_file_stat.stat.exists
+  - name: Set OPTIONS environment variable in override configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ override_config_file }}'
       state: present
-    notify: restart httpd
-  - name: Fix override.conf file
-    ansible.builtin.ini_file:
-      path: '{{ override_conf_path }}'
-      section: Service
-      option: ExecStart
-      value: ''
-      state: present
-  - name: Ensure httpd service is enabled and running
-    ansible.builtin.systemd_service:
-      name: httpd
+      line: OPTIONS="some valid options"
+      regexp: ^OPTIONS=
+    notify: restart httpd service
+  - name: Validate httpd configuration syntax
+    ansible.builtin.command:
+      cmd: apachectl configtest
+    register: httpd_config_test
+    changed_when: false
+  - name: Ensure httpd service is running and enabled
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: restart httpd
-    ansible.builtin.systemd_service:
-      name: httpd
+  - name: restart httpd service
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
       state: restarted
