@@ -9,7 +9,6 @@
       path: '{{ httpd_service_file }}'
       regexp: ^ExecStart=.*OPTIONS
       replace: ExecStart=/usr/sbin/httpd $OPTIONS
-      state: present
   - name: Reload systemd to apply changes
     ansible.builtin.systemd:
       name: systemd
