@@ -2,41 +2,45 @@
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    config_file: /etc/httpd/conf/httpd.conf
+    invalid_directive: InvalidDirectiveHere
+    log_level: debug
   tasks:
-  - name: Check if httpd configuration file exists
-    ansible.builtin.stat:
-      path: '{{ httpd_config_file }}'
-    register: config_file_stat
-  - name: Validate httpd configuration file syntax
+  - name: Check if httpd service is running
+    ansible.builtin.service:
+      name: httpd
+      state: started
+      enabled: true
+    register: httpd_service_status
+    ignore_errors: true
+  - name: Check configuration file for errors
+    ansible.builtin.lineinfile:
+      path: '{{ config_file }}'
+      line: '# {{ invalid_directive }} (removed by Ansible)'
+      state: absent
+      backrefs: true
+    notify: restart httpd
+  - name: Validate configuration file syntax
     ansible.builtin.command:
       cmd: httpd -t
-    register: config_test
-    failed_when: config_test.rc != 0
-    changed_when: false
-    ignore_errors: true
-  - name: Correct invalid directive in httpd configuration file
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      line: '# Corrected directive or added comment to ignore invalid directive'
-      insertafter: ^(.*line 35.*)$
+    register: config_validation
+    failed_when: '''Syntax OK'' not in config_validation.stdout'
+  - name: Set APACHE_LOG_LEVEL to debug for detailed logging
+    ansible.builtin.environment:
+      name: APACHE_LOG_LEVEL
+      value: '{{ log_level }}'
       state: present
-    when: config_test.rc != 0 and config_file_stat.stat.exists
-  - name: Ensure httpd service is restarted on config change
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
-    notify: restart httpd service
+    notify: restart httpd
+  - name: Ensure LogLevel is set to debug in configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ config_file }}'
+      regexp: ^LogLevel
+      line: LogLevel {{ log_level }}
+      backrefs: true
+    notify: restart httpd
   handlers:
-  - name: restart httpd service
+  - name: restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: restarted
-      enabled: true
-  - name: Verify httpd service status
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: started
       enabled: true
