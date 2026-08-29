@@ -2,34 +2,34 @@
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
-    override_conf_file: /etc/systemd/system/httpd.service.d/override.conf
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_service_name: httpd
   tasks:
-  - name: Correct the Apache configuration file
+  - name: Check if httpd.conf exists
+    ansible.builtin.stat:
+      path: '{{ httpd_conf_path }}'
+    register: httpd_conf_stat
+  - name: Validate httpd.conf syntax
+    ansible.builtin.command:
+      cmd: httpd -t
+    register: httpd_syntax_check
+    failed_when: httpd_syntax_check.rc != 0
+    changed_when: false
+    become: true
+  - name: Correct invalid directive in httpd.conf
     ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
+      path: '{{ httpd_conf_path }}'
       line: '# InvalidDirectiveHere'
-      state: absent
-    notify: restart httpd
-  - name: Verify and correct the override file
-    ansible.builtin.copy:
-      content: ''
-      dest: '{{ override_conf_file }}'
-      mode: '0644'
-    when: '{{ override_conf_file }} is file and not (lookup(''file'', override_conf_file)
-      | regex_replace(''\s+'', '''') | regex_replace(''^\[.*\]$'', '''') | length
-      > 0)'
-  - name: Reload systemd daemon
-    ansible.builtin.systemd:
-      name: httpd
-      state: reloaded
+      state: present
+      create: true
+    notify: restart httpd service
   - name: Ensure httpd service is running and enabled
-    ansible.builtin.systemd:
-      name: httpd
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: restart httpd
-    ansible.builtin.systemd:
-      name: httpd
+  - name: restart httpd service
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
       state: restarted
