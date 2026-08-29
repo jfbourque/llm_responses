@@ -11,9 +11,7 @@
       replace: ExecStart=/usr/sbin/httpd $OPTIONS
   - name: Reload systemd to apply changes
     ansible.builtin.systemd:
-      name: systemd
-      state: started
-      action: daemon-reload
+      daemon_reload: true
   - name: Start and enable httpd service
     ansible.builtin.service:
       name: httpd
