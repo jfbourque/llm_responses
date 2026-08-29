@@ -8,25 +8,21 @@
   - name: Check if httpd configuration file exists
     ansible.builtin.stat:
       path: '{{ httpd_config_file }}'
-    register: httpd_config_file_stat
-  - name: Validate httpd configuration file
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      line: InvalidDirectiveHere
-      state: absent
-    when: httpd_config_file_stat.stat.exists
+    register: config_file_stat
   - name: Validate httpd configuration file syntax
     ansible.builtin.command:
-      cmd: apachectl configtest
-    register: apachectl_configtest
+      cmd: httpd -t
+    register: config_validation
+    failed_when: config_validation.rc != 0
     changed_when: false
-  - name: Restart httpd service if configuration file syntax is valid
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
-    when: apachectl_configtest.rc == 0
-  - name: Verify httpd service status
+  - name: Correct syntax error in httpd configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_config_file }}'
+      line: '# InvalidDirectiveHere'
+      regexp: ^InvalidDirectiveHere
+      state: absent
+    notify: restart httpd service
+  - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
@@ -36,4 +32,3 @@
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
-      enabled: true
