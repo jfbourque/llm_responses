@@ -4,45 +4,43 @@
   vars:
     httpd_config_file: /etc/httpd/conf/httpd.conf
     httpd_service_name: httpd
+    server_name: arduino.jfbourque.ca
   tasks:
-  - name: Check if httpd configuration file exists
-    ansible.builtin.stat:
-      path: '{{ httpd_config_file }}'
-    register: config_file_stat
-  - name: Fail if httpd configuration file does not exist
-    ansible.builtin.fail:
-      msg: httpd configuration file {{ httpd_config_file }} does not exist
-    when: not config_file_stat.stat.exists
-  - name: Validate httpd.conf syntax
+  - name: Check if httpd service is running
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+    register: service_status
+    ignore_errors: true
+  - name: Stop httpd service if it's running
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: stopped
+    when: service_status is defined and service_status.state == "started"
+  - name: Check Apache configuration syntax
     ansible.builtin.command:
       cmd: apachectl configtest
-    register: configtest_result
+    register: config_test
     changed_when: false
-  - name: Fail if configuration is invalid
-    ansible.builtin.fail:
-      msg: 'Apache configuration is invalid: {{ configtest_result.stdout }}'
-    when: configtest_result.rc != 0
-  - name: Ensure httpd configuration is correct
+  - name: Correct invalid directive in httpd.conf
     ansible.builtin.lineinfile:
       path: '{{ httpd_config_file }}'
-      line: '# Correct invalid directive here'
-      regexp: ^InvalidDirectiveHere
+      line: '# InvalidDirectiveHere'
       state: absent
-    notify: restart httpd
-  - name: Ensure OPTIONS environment variable is set
+    notify: reload httpd service
+  - name: Set ServerName directive
     ansible.builtin.lineinfile:
-      path: /etc/sysconfig/httpd
-      line: OPTIONS="-a -b"
-      regexp: ^OPTIONS
+      path: '{{ httpd_config_file }}'
+      line: ServerName {{ server_name }}
       state: present
-    notify: restart httpd
-  - name: Enable and start httpd service
+    notify: reload httpd service
+  - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: restart httpd
+  - name: reload httpd service
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      state: restarted
+      state: reloaded
