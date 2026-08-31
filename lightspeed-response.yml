@@ -1,33 +1,34 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate httpd service configuration issue on RHEL server
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
+    override_conf_path: /etc/systemd/system/httpd.service.d/override.conf
     httpd_service_name: httpd
   tasks:
-  - name: Correct httpd configuration
-    ansible.builtin.replace:
-      path: '{{ httpd_config_file }}'
-      regexp: InvalidDirectiveHere
-      replace: '# InvalidDirectiveHere # Corrected'
-    notify: restart httpd
-    check_mode: true
-  - name: Verify httpd configuration syntax
-    ansible.builtin.command: apachectl configtest
-    register: config_test
-    changed_when: false
-  - name: Fail if httpd configuration test failed
-    ansible.builtin.fail:
-      msg: 'httpd configuration test failed: {{ config_test.stdout }}'
-    when: '''Syntax OK'' not in config_test.stdout'
-  handlers:
-  - name: restart httpd
-    ansible.builtin.service:
+  - name: Check if override.conf exists
+    ansible.builtin.stat:
+      path: '{{ override_conf_path }}'
+    register: override_conf_stat
+  - name: Review and correct override.conf
+    ansible.builtin.lineinfile:
+      path: '{{ override_conf_path }}'
+      state: present
+      line: ''
+      regexp: ^[^\[\]]
+      backrefs: true
+    notify: restart httpd service
+    when: override_conf_stat.stat.exists and override_conf_stat.stat.is_file
+  - name: Reload systemd daemon
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
+      state: reloaded
   - name: Ensure httpd service is running and enabled
-    ansible.builtin.service:
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
+  handlers:
+  - name: restart httpd service
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: restarted
