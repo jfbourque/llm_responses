@@ -23,6 +23,13 @@
       state: present
     notify: restart httpd service
     become: true
+  - name: Ensure a valid directive is present in httpd configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_config_file }}'
+      line: ServerName example.com
+      state: present
+    notify: restart httpd service
+    become: true
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
