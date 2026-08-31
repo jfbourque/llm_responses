@@ -3,52 +3,39 @@
   become: true
   vars:
     httpd_config_file: /etc/httpd/conf/httpd.conf
-    override_config_file: /etc/systemd/system/httpd.service.d/override.conf
-    httpd_service: httpd
+    httpd_service_name: httpd
   tasks:
   - name: Check if httpd configuration file exists
     ansible.builtin.stat:
       path: '{{ httpd_config_file }}'
     register: httpd_config_file_stat
-  - name: Correct syntax error in httpd configuration file
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      line: '# InvalidDirectiveHere'
-      state: absent
-      backrefs: true
-    when: httpd_config_file_stat.stat.exists
-  - name: Validate httpd configuration
+  - name: Validate httpd configuration file syntax
     ansible.builtin.command:
       cmd: httpd -t
     register: httpd_config_validation
+    failed_when: httpd_config_validation.rc != 0
     changed_when: false
-  - name: Check if override configuration file exists
-    ansible.builtin.stat:
-      path: '{{ override_config_file }}'
-    register: override_config_file_stat
-  - name: Correct override configuration file
-    ansible.builtin.replace:
-      path: '{{ override_config_file }}'
-      regexp: ^[^#].*Assignment.*$
-      replace: '# \0'
-    when: override_config_file_stat.stat.exists
-  - name: Reload systemd daemon
-    ansible.builtin.systemd:
-      name: '{{ httpd_service }}'
-      state: reloaded
-    when: override_config_file_stat.stat.exists
-  - name: Restart httpd service if configuration has changed
-    ansible.builtin.service:
-      name: '{{ httpd_service }}'
-      state: restarted
-    when: httpd_config_validation is changed
+  - name: Correct invalid directive in httpd configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_config_file }}'
+      line: '# InvalidDirectiveHere'
+      regexp: ^InvalidDirectiveHere
+      state: present
+    notify: restart httpd service
+  - name: Ensure a valid directive is present in httpd configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_config_file }}'
+      line: ServerName example.com
+      regexp: ^ServerName
+      state: present
+    notify: restart httpd service
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
   - name: restart httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
       state: restarted
