@@ -2,31 +2,50 @@
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_config_file: /etc/httpd/conf/httpd.conf
+    override_conf_dir: /etc/systemd/system/httpd.service.d
     httpd_service_name: httpd
   tasks:
-  - name: Correct invalid directive in httpd.conf
-    ansible.builtin.replace:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^InvalidDirectiveHere
-      replace: ''
-  - name: Validate httpd configuration file syntax
-    ansible.builtin.command: httpd -t
+  - name: Check if httpd configuration file exists
+    ansible.builtin.stat:
+      path: '{{ httpd_config_file }}'
+    register: httpd_config_file_stat
+  - name: Correct syntax error in httpd configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_config_file }}'
+      line: '# InvalidDirectiveHere'
+      state: present
+      create: true
+    when: httpd_config_file_stat.stat.exists
+  - name: Remove override.conf file if it exists
+    ansible.builtin.file:
+      path: '{{ override_conf_dir }}/override.conf'
+      state: absent
+    when: ansible.builtin.stat(override_conf_dir).stat.exists
+  - name: Verify httpd configuration file syntax
+    ansible.builtin.command:
+      cmd: apachectl configtest
     register: httpd_config_test
-    failed_when: '''Syntax OK'' not in stdout'
-  - name: Restart httpd service if config has changed
+    changed_when: false
+  - name: Restart httpd service if configuration test fails
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
-    when: httpd_config_test is changed
-    listen: restart httpd
-  - name: Ensure httpd service is running and enabled
+    when: httpd_config_test.rc != 0
+  handlers:
+  - name: Restart httpd service
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: restarted
+  - name: Enable and start httpd service
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-  handlers:
-  - name: restart httpd
+  - name: Verify httpd service status
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      state: restarted
+      state: started
+      enabled: true
+    register: httpd_service_status
+    changed_when: false
