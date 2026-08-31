@@ -3,40 +3,52 @@
   become: true
   vars:
     httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    override_config_file: /etc/systemd/system/httpd.service.d/override.conf
+    httpd_service: httpd
   tasks:
   - name: Check if httpd configuration file exists
     ansible.builtin.stat:
       path: '{{ httpd_config_file }}'
     register: httpd_config_file_stat
-  - name: Validate httpd configuration file
+  - name: Correct syntax error in httpd configuration file
     ansible.builtin.lineinfile:
       path: '{{ httpd_config_file }}'
-      line: InvalidDirectiveHere
+      line: '# InvalidDirectiveHere'
       state: absent
-    when: httpd_config_file_stat.stat.exists
-  - name: Replace invalid directive with a valid one
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      regexp: ^InvalidDirectiveHere
-      line: ServerName example.com
+      backrefs: true
     when: httpd_config_file_stat.stat.exists
   - name: Validate httpd configuration
-    ansible.builtin.command: httpd -t
+    ansible.builtin.command:
+      cmd: httpd -t
     register: httpd_config_validation
     changed_when: false
+  - name: Check if override configuration file exists
+    ansible.builtin.stat:
+      path: '{{ override_config_file }}'
+    register: override_config_file_stat
+  - name: Correct override configuration file
+    ansible.builtin.replace:
+      path: '{{ override_config_file }}'
+      regexp: ^[^#].*Assignment.*$
+      replace: '# \0'
+    when: override_config_file_stat.stat.exists
+  - name: Reload systemd daemon
+    ansible.builtin.systemd:
+      name: '{{ httpd_service }}'
+      state: reloaded
+    when: override_config_file_stat.stat.exists
   - name: Restart httpd service if configuration has changed
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: restarted
-    when: httpd_config_validation.rc != 0
+    when: httpd_config_validation is changed
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: started
       enabled: true
   handlers:
   - name: restart httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: restarted
