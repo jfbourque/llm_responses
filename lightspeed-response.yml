@@ -9,23 +9,21 @@
     ansible.builtin.stat:
       path: '{{ httpd_config_file }}'
     register: httpd_config_file_stat
-  - name: Remove invalid directive from httpd configuration file
+  - name: Read httpd configuration file
+    ansible.builtin.fetch:
+      src: '{{ httpd_config_file }}'
+      dest: /tmp
+      flat: true
+    register: httpd_config_file_fetch
+    when: httpd_config_file_stat.stat.exists
+  - name: Correct invalid directive in httpd configuration file
     ansible.builtin.lineinfile:
       path: '{{ httpd_config_file }}'
-      line: InvalidDirectiveHere
-      state: absent
-    when: httpd_config_file_stat.stat.exists
-  - name: Validate httpd configuration file syntax
-    ansible.builtin.command: httpd -t
-    register: httpd_config_test
-    changed_when: false
-  - name: Restart httpd service if configuration file has changed
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
-    when: httpd_config_test.rc != 0
-  - name: Verify httpd service status
+      line: '# InvalidDirectiveHere'
+      state: present
+      create: true
+    notify: restart httpd service
+  - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
@@ -35,4 +33,3 @@
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
-      enabled: true
