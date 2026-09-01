@@ -2,37 +2,37 @@
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
     httpd_service_name: httpd
   tasks:
-  - name: Correct the Apache configuration file
+  - name: Check if httpd.conf exists
+    ansible.builtin.stat:
+      path: '{{ httpd_conf_path }}'
+    register: httpd_conf_stat
+  - name: Correct invalid directive in httpd.conf
     ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
+      path: '{{ httpd_conf_path }}'
       line: '# InvalidDirectiveHere'
-      state: absent
-      backrefs: true
-  - name: Validate the Apache configuration
+      state: present
+      create: true
+    when: httpd_conf_stat.stat.exists
+  - name: Validate httpd.conf syntax
     ansible.builtin.command: httpd -t
-    register: httpd_config_validation
+    register: httpd_syntax_check
     changed_when: false
-  - name: Restart httpd service if configuration is valid
+  - name: Restart httpd service if config is corrected
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
       enabled: true
-    when: httpd_config_validation.rc == 0
-  - name: Verify httpd service is running and enabled
+    when: httpd_syntax_check.rc == 0 and httpd_conf_stat.stat.exists
+  - name: Verify httpd service status
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-    register: httpd_service_status
-  - name: Handle httpd service restart failure
-    ansible.builtin.debug:
-      msg: httpd service failed to restart
-    when: httpd_service_status.rc != 0
   handlers:
-  - name: Restart httpd service
+  - name: restart httpd
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
