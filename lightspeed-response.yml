@@ -5,11 +5,11 @@
     httpd_conf_path: /etc/httpd/conf/httpd.conf
     httpd_service_name: httpd
   tasks:
-  - name: Check if httpd.conf file exists
+  - name: Check if httpd.conf exists
     ansible.builtin.stat:
       path: '{{ httpd_conf_path }}'
-    register: httpd_conf_file
-  - name: Validate httpd.conf file syntax
+    register: httpd_conf_stat
+  - name: Validate httpd.conf syntax
     ansible.builtin.command:
       cmd: httpd -t
     register: httpd_syntax_check
@@ -19,9 +19,9 @@
   - name: Correct invalid directive in httpd.conf
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      line: '#InvalidDirectiveHere'
+      line: '# InvalidDirectiveHere'
+      regexp: ^InvalidDirectiveHere
       state: present
-      create: true
     notify: restart httpd service
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
