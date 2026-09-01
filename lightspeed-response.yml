@@ -16,12 +16,12 @@
     failed_when: httpd_syntax_check.rc != 0
     changed_when: false
     become: true
-  - name: Correct invalid directive in httpd.conf file
+  - name: Correct invalid directive in httpd.conf
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
       line: '#InvalidDirectiveHere'
-      regexp: ^InvalidDirectiveHere
       state: present
+      create: true
     notify: restart httpd service
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
