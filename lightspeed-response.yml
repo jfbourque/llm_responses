@@ -2,34 +2,43 @@
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_config_file: /etc/httpd/conf/httpd.conf
     httpd_service_name: httpd
   tasks:
   - name: Check if httpd configuration file exists
     ansible.builtin.stat:
-      path: '{{ httpd_conf_path }}'
-    register: httpd_conf_file
-  - name: Validate httpd configuration file syntax
-    ansible.builtin.command:
-      cmd: httpd -t
-    register: httpd_syntax_check
-    failed_when: httpd_syntax_check.rc != 0
-    changed_when: false
-    become: true
-  - name: Correct invalid directive in httpd configuration file
+      path: '{{ httpd_config_file }}'
+    register: httpd_config_file_stat
+  - name: Remove invalid directive from httpd configuration file
     ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      line: '# InvalidDirectiveHere'
-      state: present
-    notify: restart httpd service
-    become: true
-  - name: Ensure httpd service is running and enabled
+      path: '{{ httpd_config_file }}'
+      line: InvalidDirectiveHere
+      state: absent
+    when: httpd_config_file_stat.stat.exists
+  - name: Validate httpd configuration file
+    ansible.builtin.command:
+      cmd: apachectl configtest
+    register: httpd_config_test
+    changed_when: false
+  - name: Restart httpd service if configuration file has changed
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: restarted
+      enabled: true
+    when: httpd_config_test.rc != 0 or httpd_config_file_stat.changed
+  - name: Verify httpd service is running and enabled
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
+    register: httpd_service_status
+  - name: Handle httpd service restart failure
+    ansible.builtin.debug:
+      msg: httpd service failed to restart
+    when: httpd_service_status.rc != 0
   handlers:
-  - name: restart httpd service
+  - name: Restart httpd service
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
+      enabled: true
