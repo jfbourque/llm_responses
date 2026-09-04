@@ -3,29 +3,27 @@
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    invalid_directive: InvalidDirectiveHere
-    options_variable: OPTIONS=-DFOREGROUND
+    correct_httpd_conf_path: /path/to/correct/httpd.conf
   tasks:
-  - name: Check and correct the httpd.conf file
-    ansible.builtin.lineinfile:
+  - name: Check if httpd.conf file exists
+    ansible.builtin.stat:
       path: '{{ httpd_conf_path }}'
-      state: absent
-      line: '{{ invalid_directive }}'
-    notify: restart httpd
-  - name: Set the OPTIONS environment variable
-    ansible.builtin.lineinfile:
-      path: /etc/systemd/system/httpd.service.d/options.conf
-      state: present
-      line: Environment={{ options_variable }}
-      create: true
+    register: httpd_conf_file
+  - name: Correct httpd.conf file
+    ansible.builtin.copy:
+      content: '{{ lookup(''file'', correct_httpd_conf_path) }}'
+      dest: '{{ httpd_conf_path }}'
+      mode: '0644'
+    when: httpd_conf_file.stat.exists
     notify: restart httpd
   - name: Ensure httpd service is running and enabled
-    ansible.builtin.systemd:
+    ansible.builtin.service:
       name: httpd
       state: started
       enabled: true
   handlers:
   - name: restart httpd
-    ansible.builtin.systemd:
+    ansible.builtin.service:
       name: httpd
       state: restarted
+      enabled: true
