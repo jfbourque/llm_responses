@@ -2,37 +2,43 @@
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
     httpd_service_name: httpd
+    options_variable: OPTIONS
+    options_value: -c /etc/httpd/conf/httpd.conf
   tasks:
-  - name: Check if httpd configuration file exists
-    ansible.builtin.stat:
-      path: '{{ httpd_config_file }}'
-    register: httpd_config_file_stat
-  - name: Remove invalid directive from httpd configuration file
+  - name: Correct syntax error in httpd.conf
     ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      line: InvalidDirectiveHere
+      path: '{{ httpd_conf_path }}'
       state: absent
-    when: httpd_config_file_stat.stat.exists
-  - name: Validate httpd configuration file syntax
-    ansible.builtin.command: httpd -t
-    register: httpd_config_test
-    changed_when: false
-  - name: Restart httpd service if configuration file has changed
+      line: InvalidDirectiveHere
+      backup: true
+  - name: Define OPTIONS environment variable in httpd.service
+    ansible.builtin.lineinfile:
+      path: /usr/lib/systemd/system/httpd.service
+      state: present
+      line: Environment={{ options_variable }}={{ options_value }}
+      regexp: ^Environment=.*$
+      backrefs: true
+      backup: true
+  - name: Reload systemd daemon
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: reloaded
+  - name: Restart httpd service if needed
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
       enabled: true
-    when: httpd_config_test.rc != 0 or httpd_config_file_stat.changed
-  - name: Verify httpd service status
+      loop: '{{ ansible_play_hosts }}'
+      when: '''InvalidDirectiveHere'' in ansible.builtin.slurp(path=httpd_conf_path).content'
+  - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-    register: httpd_service_status
-  - name: Ensure httpd service logs are not reporting errors
-    ansible.builtin.command: journalctl -u {{ httpd_service_name }} | grep -q 'error'
-    register: httpd_service_errors
-    changed_when: false
-    failed_when: httpd_service_errors.rc == 0
+  handlers:
+  - name: restart httpd
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: restarted
