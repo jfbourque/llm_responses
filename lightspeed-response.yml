@@ -2,35 +2,30 @@
   hosts: all
   become: true
   vars:
-    httpd_service_file: /usr/lib/systemd/system/httpd.service
-    httpd_service_name: httpd
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    invalid_directive: InvalidDirectiveHere
+    options_variable: OPTIONS=-DFOREGROUND
   tasks:
-  - name: Check if httpd service file exists
-    ansible.builtin.stat:
-      path: '{{ httpd_service_file }}'
-    register: httpd_service_file_stat
-  - name: Remove invalid option from httpd service file
-    ansible.builtin.replace:
-      path: '{{ httpd_service_file }}'
-      regexp: -DFOREGROUND
-      replace: ''
-    when: httpd_service_file_stat.stat.exists and httpd_service_file_stat.stat.is_file
-  - name: Reload systemd daemon
-    ansible.builtin.systemd:
-      daemon_reload: true
+  - name: Check and correct the httpd.conf file
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf_path }}'
+      state: absent
+      line: '{{ invalid_directive }}'
+    notify: restart httpd
+  - name: Set the OPTIONS environment variable
+    ansible.builtin.lineinfile:
+      path: /etc/systemd/system/httpd.service.d/options.conf
+      state: present
+      line: Environment={{ options_variable }}
+      create: true
+    notify: restart httpd
   - name: Ensure httpd service is running and enabled
     ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: started
       enabled: true
-  - name: Validate httpd service status
-    ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
-      status: '{{ httpd_service_name }} is running and enabled'
-    register: httpd_service_status
-    failed_when: not httpd_service_status is successful
   handlers:
-  - name: restart httpd service
+  - name: restart httpd
     ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: restarted
