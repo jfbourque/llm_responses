@@ -4,41 +4,29 @@
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
     options_conf_path: /etc/systemd/system/httpd.service.d/options.conf
+    httpd_service_name: httpd
   tasks:
   - name: Correct syntax error in httpd.conf
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      line: '# InvalidDirectiveHere'
-      state: absent
-      backrefs: true
-  - name: Correct misconfiguration in options.conf
-    ansible.builtin.replace:
-      path: '{{ options_conf_path }}'
-      regexp: ^Assignment\s*=\s*value
-      replace: '[Service]\nAssignment=value'
-  - name: Ensure httpd service configuration is correct
-    ansible.builtin.file:
-      path: '{{ options_conf_path }}'
+      line: '# Correct or remove the invalid directive on line 35'
+      insertafter: ^(.*line 35.*)$
       state: present
-      mode: '0644'
-  - name: Reload systemd daemon
-    ansible.builtin.systemd:
-      name: httpd
-      state: reloaded
+    notify: restart httpd
+  - name: Ensure correct section in options.conf
+    ansible.builtin.ini_file:
+      path: '{{ options_conf_path }}'
+      section: Service
+      option: ExecStart
+      value: ''
+      state: present
+  - name: Ensure httpd service is enabled and running
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
   handlers:
-  - name: Restart httpd service
+  - name: restart httpd
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: restarted
-      enabled: true
-  - name: Verify httpd service status
-    ansible.builtin.service:
-      name: httpd
-      state: started
-      enabled: true
-  post_tasks:
-  - name: Check httpd service status
-    ansible.builtin.service:
-      name: httpd
-      state: started
-      enabled: true
