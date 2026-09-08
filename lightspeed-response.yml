@@ -1,4 +1,4 @@
-- name: Correct httpd configuration and restart service
+- name: Correct httpd.conf syntax error and restart httpd service
   hosts: all
   become: true
   vars:
@@ -8,17 +8,23 @@
   - name: Correct httpd.conf syntax error
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: ^InvalidDirectiveHere
-      line: '# InvalidDirectiveHere'
-      state: present
-    notify: restart httpd
-  - name: Ensure httpd service is running and enabled
+      line: InvalidDirectiveHere
+      state: absent
+  - name: Ensure httpd service is restarted on config change
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      state: started
+      state: restarted
       enabled: true
+      loop: '{{ ansible_facts.services | dict2items }}'
+      when: item.key == httpd_service_name
+    notify: restart httpd
   handlers:
   - name: restart httpd
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
+  - name: Verify httpd service status
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
