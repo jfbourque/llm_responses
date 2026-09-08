@@ -1,23 +1,35 @@
-- name: Remediate httpd service failure on web.sandbox5146.opentlc.com
+- name: Remediate httpd service issue on web.sandbox5146.opentlc.com
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    missing_module: mod_module.so
-    module_load_regex: ^LoadModule\s+\w+\s+modules/{{ missing_module }}
+    httpd_module_alias: mod_module
+    httpd_module_path: /usr/lib/httpd/modules/mod_module.so
   tasks:
-  - name: Ensure the httpd package is installed
-    ansible.builtin.yum:
-      name: httpd
-      state: present
-  - name: Remove (or comment out) the LoadModule line for the missing module
+  - name: Ensure required facts are gathered
+    ansible.builtin.setup: null
+  - name: Check if the required httpd module file exists
+    ansible.builtin.stat:
+      path: '{{ httpd_module_path }}'
+    register: httpd_module_stat
+  - name: Ensure the LoadModule line is present when the module file exists
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: '{{ module_load_regex }}'
-      state: absent
-      backup: true
+      regexp: ^LoadModule\s+{{ httpd_module_alias }}\s+{{ httpd_module_path }}
+      line: LoadModule {{ httpd_module_alias }} {{ httpd_module_path }}
+      state: present
+      insertafter: EOF
+    when: httpd_module_stat.stat.exists
     notify: Restart httpd
-  - name: Ensure httpd service is enabled and started
+  - name: Ensure the LoadModule line is commented out when the module file is missing
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf_path }}'
+      regexp: ^LoadModule\s+{{ httpd_module_alias }}\s+{{ httpd_module_path }}
+      line: '# LoadModule {{ httpd_module_alias }} {{ httpd_module_path }}'
+      state: present
+    when: not httpd_module_stat.stat.exists
+    notify: Restart httpd
+  - name: Verify that the httpd service is enabled and started
     ansible.builtin.service:
       name: httpd
       state: started
