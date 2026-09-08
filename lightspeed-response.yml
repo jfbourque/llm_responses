@@ -2,41 +2,41 @@
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
-    module_name: mod_module.so
-    module_path: /usr/lib/httpd/modules
-    module_full_path: '{{ module_path }}/{{ module_name }}'
-    httpd_pkg: httpd
-    module_pkg: httpd-mod_module
-    httpd_service_name: httpd
+    httpd_service: httpd
+    httpd_conf: /etc/httpd/conf/httpd.conf
+    mod_name: mod_module
+    mod_file: /usr/lib/httpd/modules/mod_module.so
+    mod_package: mod_module_pkg
+    loadmodule_regex: ^LoadModule\s+{{ mod_name }}_module\s+modules/{{ mod_name }}\.so
   tasks:
-  - name: Ensure the httpd package is installed
+  - name: Ensure the package providing the missing module is installed
     ansible.builtin.yum:
-      name: '{{ httpd_pkg }}'
+      name: '{{ mod_package }}'
       state: present
-  - name: Check whether the required module file exists
-    ansible.builtin.stat:
-      path: '{{ module_full_path }}'
-    register: module_stat
-  - name: Install package that provides the missing module (if needed)
-    ansible.builtin.yum:
-      name: '{{ module_pkg }}'
-      state: present
-    when: not module_stat.stat.exists
-  - name: Ensure the LoadModule directive for the missing module is commented out
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^\s*LoadModule\s+{{ module_name }}\s+.*$
-      state: absent
-      backrefs: true
+    register: yum_result
     notify: Restart httpd
-  - name: Verify httpd service is enabled and started
+  - name: Verify the required module file exists
+    ansible.builtin.stat:
+      path: '{{ mod_file }}'
+    register: mod_stat
+  - name: Fail if the module file is still missing after package installation
+    ansible.builtin.fail:
+      msg: Required module file {{ mod_file }} is missing on the host.
+    when: not mod_stat.stat.exists
+  - name: Remove (or comment out) the invalid LoadModule directive
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf }}'
+      regexp: '{{ loadmodule_regex }}'
+      state: absent
+      backup: true
+    notify: Restart httpd
+  - name: Ensure httpd service is enabled and running
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      enabled: true
+      name: '{{ httpd_service }}'
       state: started
+      enabled: true
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: restarted
