@@ -1,42 +1,37 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate httpd service issue on web.sandbox5146.opentlc.com
   hosts: all
   become: true
   vars:
     httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    invalid_directive: InvalidDirectiveHere
+    httpd_service: httpd
   tasks:
-  - name: Correct the configuration file
+  - name: Check if httpd configuration file contains the invalid directive
     ansible.builtin.lineinfile:
       path: '{{ httpd_config_file }}'
-      line: '# InvalidDirectiveHere'
       state: present
-      create: false
-  - name: Remove invalid directive from configuration file
+      line: '{{ invalid_directive }}'
+    register: invalid_directive_present
+    failed_when: false
+  - name: Remove the invalid directive from the httpd configuration file
     ansible.builtin.lineinfile:
       path: '{{ httpd_config_file }}'
-      regexp: ^InvalidDirectiveHere
-      line: '#InvalidDirectiveHere'
-      state: present
-      backrefs: true
-  - name: Ensure httpd service is configured to start on boot
-    ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
-      enabled: true
-      state: enabled
-  - name: Restart httpd service if configuration has changed
+      state: absent
+      line: '{{ invalid_directive }}'
+    when: invalid_directive_present.found > 0
+  - name: Ensure httpd service is restarted if configuration file changed
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: restarted
       enabled: true
-      daemon_reload: true
     notify: restart httpd
-  - name: Verify httpd service is running
+  - name: Verify httpd service is running and enabled
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: started
       enabled: true
   handlers:
   - name: restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: restarted
