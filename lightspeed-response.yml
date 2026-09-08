@@ -1,51 +1,25 @@
-- name: Remediate httpd configuration on the affected host
+- name: Remediate httpd.service failure on web.sandbox5146.opentlc.com
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
+    serveralias_pattern: ^\\s*ServerAlias\\b
     httpd_service_name: httpd
-    vhost_port: 80
-    server_name: www.example.com
-    server_alias: example.com
-    document_root: /var/www/html
-    vhost_block_marker: '# BEGIN ANSIBLE MANAGED VIRTUALHOST'
-    vhost_block_marker_end: '# END ANSIBLE MANAGED VIRTUALHOST'
   tasks:
-  - name: Ensure a backup of the original httpd configuration exists
-    ansible.builtin.copy:
-      src: '{{ httpd_conf_path }}'
-      dest: '{{ httpd_conf_path }}.bak_{{ ansible_date_time.iso8601_basic_short }}'
-      remote_src: true
-      mode: '0644'
-    when: not httpd_conf_path is path('exists')
-    tags: backup
-  - name: Remove stray ServerAlias directives outside of a <VirtualHost> block
-    ansible.builtin.lineinfile:
+  - name: Ensure any stray ServerAlias directives are commented out
+    ansible.builtin.replace:
       path: '{{ httpd_conf_path }}'
-      regexp: ^\s*ServerAlias\s+.*
-      state: absent
-    notify: Restart httpd
-    tags: config
-  - name: Ensure required VirtualHost block with ServerAlias is present
-    ansible.builtin.blockinfile:
-      path: '{{ httpd_conf_path }}'
-      marker: '{{ item.marker }}'
-      block: "<VirtualHost *:{{ vhost_port }}>\n    ServerName {{ server_name }}\n
-        \   ServerAlias {{ server_alias }}\n    DocumentRoot \"{{ document_root }}\"\n
-        \   # Additional directives can be added here\n</VirtualHost>\n"
-    loop:
-    - marker: '{{ vhost_block_marker }}'
-    - marker: '{{ vhost_block_marker_end }}'
-    notify: Restart httpd
-    tags: config
-  - name: Ensure httpd service is enabled and started
+      regexp: '{{ serveralias_pattern }}'
+      replace: '# \0'
+      backup: true
+    notify: Restart {{ httpd_service_name }}
+  - name: Ensure the httpd service is enabled and running
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      enabled: true
       state: started
-    tags: service
+      enabled: true
   handlers:
-  - name: Restart httpd
+  - name: Restart {{ httpd_service_name }}
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
