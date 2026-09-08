@@ -1,42 +1,42 @@
-- name: Remediate httpd service issue on web.sandbox5146.opentlc.com
+- name: Remediate httpd service on the problematic host
   hosts: all
   become: true
   vars:
-    httpd_service: httpd
-    httpd_conf: /etc/httpd/conf/httpd.conf
-    mod_name: mod_module
-    mod_file: /usr/lib/httpd/modules/mod_module.so
-    mod_package: mod_module_pkg
-    loadmodule_regex: ^LoadModule\s+{{ mod_name }}_module\s+modules/{{ mod_name }}\.so
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_service_name: httpd
+    missing_module_name: mod_module.so
+    missing_module_path: /usr/lib/httpd/modules/{{ missing_module_name }}
+    httpd_package: httpd
+    httpd_modules_package: httpd
   tasks:
-  - name: Ensure the package providing the missing module is installed
-    ansible.builtin.yum:
-      name: '{{ mod_package }}'
+  - name: Ensure core httpd package is installed
+    ansible.builtin.package:
+      name: '{{ httpd_package }}'
       state: present
-    register: yum_result
-    notify: Restart httpd
-  - name: Verify the required module file exists
+  - name: Verify the missing module file
     ansible.builtin.stat:
-      path: '{{ mod_file }}'
-    register: mod_stat
-  - name: Fail if the module file is still missing after package installation
-    ansible.builtin.fail:
-      msg: Required module file {{ mod_file }} is missing on the host.
-    when: not mod_stat.stat.exists
-  - name: Remove (or comment out) the invalid LoadModule directive
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf }}'
-      regexp: '{{ loadmodule_regex }}'
-      state: absent
-      backup: true
+      path: '{{ missing_module_path }}'
+    register: missing_module_stat
+  - name: Install package that provides the missing module (if needed)
+    ansible.builtin.package:
+      name: '{{ httpd_modules_package }}'
+      state: present
+    when: not missing_module_stat.stat.exists
+  - name: Comment out the LoadModule line for the missing module
+    ansible.builtin.replace:
+      path: '{{ httpd_conf_path }}'
+      regexp: ^\s*LoadModule\s+{{ missing_module_name | regex_escape }}\s+{{ missing_module_path
+        | regex_escape }}\s*$
+      replace: '# LoadModule {{ missing_module_name }} {{ missing_module_path }}  #
+        disabled by Ansible remediation'
     notify: Restart httpd
   - name: Ensure httpd service is enabled and running
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
-      state: started
+      name: '{{ httpd_service_name }}'
       enabled: true
+      state: started
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
       state: restarted
