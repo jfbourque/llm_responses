@@ -1,30 +1,30 @@
-- name: Correct httpd.conf syntax error and restart httpd service
+- name: Remediate httpd service issue
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    invalid_directive_line: 35
+    invalid_directive: InvalidDirectiveHere
   tasks:
-  - name: Correct httpd.conf syntax error
+  - name: Check if httpd.conf exists
+    ansible.builtin.stat:
+      path: '{{ httpd_conf_path }}'
+    register: httpd_conf_stat
+  - name: Remove invalid directive from httpd.conf
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      line: InvalidDirectiveHere
+      line: '{{ invalid_directive }}'
       state: absent
-  - name: Ensure httpd service is restarted on config change
+      backup: true
+    when: httpd_conf_stat.stat.exists
+  - name: Ensure httpd service is restarted if config changed
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: restarted
-      enabled: true
-      loop: '{{ ansible_facts.services | dict2items }}'
-      when: item.key == httpd_service_name
-    notify: restart httpd
+    notify: enable and start httpd service
   handlers:
-  - name: restart httpd
+  - name: enable and start httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-  - name: Verify httpd service status
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: started
       enabled: true
