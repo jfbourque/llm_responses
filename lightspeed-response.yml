@@ -4,21 +4,22 @@
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
     invalid_directive: InvalidDirectiveHere
-    corrected_directive: '# Correct directive here'
+    httpd_service: httpd
   tasks:
-  - name: Replace invalid directive in httpd.conf
-    ansible.builtin.replace:
+  - name: Correct syntax error in httpd.conf
+    ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: '{{ invalid_directive }}'
-      replace: '{{ corrected_directive }}'
+      line: '# {{ invalid_directive }} # Removed invalid directive'
+      regexp: ^.*{{ invalid_directive }}.*$
+      state: present
     notify: restart httpd
-  - name: Ensure httpd service is started and enabled
+  - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service }}'
       state: started
       enabled: true
   handlers:
   - name: restart httpd
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service }}'
       state: restarted
