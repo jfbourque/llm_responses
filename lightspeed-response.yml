@@ -15,17 +15,35 @@
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
       regexp: ^InvalidDirectiveHere
-      line: '# Removed invalid directive'
+      line: '# Removed InvalidDirectiveHere'
+      state: present
+      backrefs: true
+  - name: Ensure required modules are included in server configuration
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf_path }}'
+      line: LoadModule module_name /usr/lib/httpd/modules/mod_module.so
       state: present
       create: false
-    notify: restart httpd service
-  - name: Ensure httpd service is running and enabled
+    loop:
+    - module_name: mod_ssl
+    - module_name: mod_rewrite
+    loop_control:
+      loop_var: module_name
+  - name: Restart httpd service if configuration has changed
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      state: started
+      state: restarted
       enabled: true
+      daemon_reload: true
+    notify: restart httpd service
   handlers:
   - name: restart httpd service
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
+      enabled: true
+  - name: Verify httpd service is running and enabled
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
