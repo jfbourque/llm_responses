@@ -4,29 +4,33 @@
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
     options_conf_path: /etc/systemd/system/httpd.service.d/options.conf
-    httpd_service_name: httpd
   tasks:
   - name: Correct syntax error in httpd.conf
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      line: '# Correct or remove the invalid directive on line 35'
-      insertafter: ^(.*line 35.*)$
-      state: present
-    notify: restart httpd
-  - name: Ensure correct section in options.conf
-    ansible.builtin.ini_file:
+      line: '# InvalidDirectiveHere'
+      state: absent
+      backrefs: true
+  - name: Correct syntax error in options.conf
+    ansible.builtin.replace:
       path: '{{ options_conf_path }}'
-      section: Service
-      option: ExecStart
-      value: ''
-      state: present
-  - name: Ensure httpd service is enabled and running
+      regexp: ^.*Assignment outside of section.*$
+      replace: ''
+  - name: Ensure httpd service is restarted if config changes
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: started
+      name: httpd
+      state: restarted
       enabled: true
+      daemon_reload: true
+    notify: restart httpd
   handlers:
   - name: restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: restarted
+      enabled: true
+  - name: Verify httpd service status
+    ansible.builtin.service:
+      name: httpd
+      state: started
+      enabled: true
