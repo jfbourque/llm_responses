@@ -1,51 +1,36 @@
-- name: Remediate httpd service configuration issue on RHEL server
+- name: Remediate httpd service issue on RHEL server
   hosts: all
   become: true
   vars:
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
     options_conf_path: /etc/systemd/system/httpd.service.d/options.conf
-    httpd_service_name: httpd.service
+    httpd_service_name: httpd
   tasks:
-  - name: Check if options.conf file exists
-    ansible.builtin.stat:
+  - name: Check and correct httpd.conf syntax error
+    lineinfile:
+      path: '{{ httpd_conf_path }}'
+      line: ''
+      state: absent
+      regexp: ^InvalidDirectiveHere
+    notify: restart httpd
+  - name: Ensure httpd configuration is valid
+    command: httpd -t
+    register: httpd_config_test
+    changed_when: false
+  - name: Investigate and correct options.conf
+    lineinfile:
       path: '{{ options_conf_path }}'
-    register: options_conf_file
-  - name: Review and correct configuration in options.conf
-    ansible.builtin.lineinfile:
-      path: '{{ options_conf_path }}'
-      regexp: ^[^#].*?=[^=]*$
-      line: '# \g<0>'
-      state: present
-      backrefs: true
-    when: options_conf_file.stat.exists
-  - name: Ensure correct section-based configuration
-    ansible.builtin.blockinfile:
-      path: '{{ options_conf_path }}'
-      block: '[Service]
-
-        ExecStart=/usr/sbin/httpd $OPTIONS
-
-        '
-      create: true
-    when: options_conf_file.stat.exists
-  - name: Reload systemd daemon
-    ansible.builtin.systemd:
-      name: daemon-reload
-      state: reloaded
-  - name: Restart httpd service if changed
-    ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
-    register: httpd_service_restart
-  - name: Verify httpd service status
-    ansible.builtin.systemd:
+      line: ''
+      state: absent
+      regexp: ^[[:space:]]*InvalidAssignment
+    notify: restart httpd
+  - name: Ensure httpd service is enabled and started
+    ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-    register: httpd_service_status
   handlers:
-  - name: Restart httpd service
-    ansible.builtin.systemd:
+  - name: restart httpd
+    ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
-      enabled: true
