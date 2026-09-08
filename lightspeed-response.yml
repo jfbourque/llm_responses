@@ -1,24 +1,33 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate httpd service issue on web.sandbox5146.opentlc.com
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    invalid_directive: InvalidDirectiveHere
+    correct_directive: ServerAlias
   tasks:
-  - name: Correct syntax error in httpd.conf
-    ansible.builtin.lineinfile:
+  - name: Check if httpd.conf exists
+    ansible.builtin.stat:
       path: '{{ httpd_conf_path }}'
-      line: '# InvalidDirectiveHere'
-      regexp: ^InvalidDirectiveHere
-      state: present
+    register: httpd_conf_stat
+  - name: Fail if httpd.conf does not exist
+    ansible.builtin.fail:
+      msg: '{{ httpd_conf_path }} does not exist'
+    when: not httpd_conf_stat.stat.exists
+  - name: Replace invalid directive in httpd.conf
+    ansible.builtin.replace:
+      path: '{{ httpd_conf_path }}'
+      regexp: ^.*{{ invalid_directive }}.*$
+      replace: '{{ correct_directive }}'
+      backup: true
     notify: restart httpd
-  - name: Ensure httpd service is running and enabled
+  - name: Ensure httpd service is started and enabled
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: started
       enabled: true
   handlers:
   - name: restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: restarted
