@@ -1,25 +1,34 @@
-- name: Remediate httpd.service failure on web.sandbox5146.opentlc.com
+- name: Remediate httpd configuration and ensure service is running
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    serveralias_pattern: ^\\s*ServerAlias\\b
-    httpd_service_name: httpd
+    server_name: www.example.com
+    server_alias: example.com www.example.org
+    document_root: /var/www/html
   tasks:
-  - name: Ensure any stray ServerAlias directives are commented out
+  - name: Comment out any ServerAlias directives outside of VirtualHost blocks
     ansible.builtin.replace:
       path: '{{ httpd_conf_path }}'
-      regexp: '{{ serveralias_pattern }}'
-      replace: '# \0'
+      regexp: ^([ \t]*)ServerAlias[ \t]+.*$
+      replace: \1# ServerAlias removed by Ansible remediation
       backup: true
-    notify: Restart {{ httpd_service_name }}
-  - name: Ensure the httpd service is enabled and running
+    notify: Restart httpd
+  - name: Ensure a proper VirtualHost block with ServerAlias exists
+    ansible.builtin.blockinfile:
+      path: '{{ httpd_conf_path }}'
+      marker: '# {mark} ANSIBLE MANAGED VIRTUALHOST'
+      block: "<VirtualHost *:80>\n    ServerName {{ server_name }}\n    ServerAlias
+        {{ server_alias }}\n    DocumentRoot {{ document_root }}\n</VirtualHost>\n"
+      insertafter: EOF
+    notify: Restart httpd
+  - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: started
       enabled: true
   handlers:
-  - name: Restart {{ httpd_service_name }}
+  - name: Restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: restarted
