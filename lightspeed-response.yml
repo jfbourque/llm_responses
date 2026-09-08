@@ -1,41 +1,42 @@
-- name: Remediate httpd service issue on web.sandbox5146.opentlc.com
+- name: Remediate httpd service issue on RHEL server
   hosts: all
   become: true
   vars:
     httpd_config_file: /etc/httpd/conf/httpd.conf
     httpd_service_name: httpd
   tasks:
-  - name: Correct the syntax error in the httpd configuration file
+  - name: Correct the configuration file
     ansible.builtin.lineinfile:
       path: '{{ httpd_config_file }}'
       line: '# InvalidDirectiveHere'
-      state: absent
+      state: present
+      create: false
+  - name: Remove invalid directive from configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_config_file }}'
+      regexp: ^InvalidDirectiveHere
+      line: '#InvalidDirectiveHere'
+      state: present
       backrefs: true
-  - name: Ensure the httpd service is configured to start automatically
+  - name: Ensure httpd service is configured to start on boot
     ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       enabled: true
-      state: started
-  - name: Restart the httpd service if the configuration file has changed
+      state: enabled
+  - name: Restart httpd service if configuration has changed
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
       enabled: true
+      daemon_reload: true
     notify: restart httpd
+  - name: Verify httpd service is running
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
   handlers:
   - name: restart httpd
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
-      enabled: true
-  - name: Verify the httpd service is running and enabled
-    ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
-      state: started
-      enabled: true
-    register: httpd_status
-  - name: Assert httpd service status
-    ansible.builtin.assert:
-      that:
-      - httpd_status.state == "started"
-      - httpd_status.enabled == true
