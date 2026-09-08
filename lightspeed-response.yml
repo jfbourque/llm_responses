@@ -13,19 +13,13 @@
   - name: Remove httpd configuration referencing the missing module
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: ^LoadModule mod_module
-      line: '#LoadModule mod_module'
-      state: present
+      line: LoadModule mod_module
+      state: absent
     when: module_file_stat.stat.exists == False
   - name: Install httpd module package if missing
     ansible.builtin.dnf:
       name: httpd-modules
       state: present
-    when: module_file_stat.stat.exists == False
-  - name: Restart httpd service if configuration changed
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
     when: module_file_stat.stat.exists == False
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
