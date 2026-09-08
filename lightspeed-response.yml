@@ -1,31 +1,45 @@
-- name: Remediate httpd.service failure on web.sandbox5146.opentlc.com
+- name: Remediate httpd service issue on RHEL server
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_config_file: /etc/httpd/conf/httpd.conf
     httpd_service_name: httpd
   tasks:
-  - name: Correct syntax error in httpd.conf
+  - name: Correct invalid directive in httpd configuration file
     ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      line: '# Corrected line, removing InvalidDirectiveHere'
-      regexp: ^InvalidDirectiveHere
+      path: '{{ httpd_config_file }}'
+      line: '# InvalidDirectiveHere'
       state: present
-    notify: restart httpd service
-  - name: Ensure correct configuration is in place
-    ansible.builtin.template:
-      src: templates/httpd.conf.j2
-      dest: '{{ httpd_conf_path }}'
-      mode: '0644'
-      backup: true
-    notify: restart httpd service
-  - name: Ensure httpd service is started and enabled
+      create: false
+  - name: Remove invalid directive from httpd configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_config_file }}'
+      line: InvalidDirectiveHere
+      state: absent
+  - name: Validate httpd configuration
+    ansible.builtin.command: httpd -t
+    register: config_validation
+    changed_when: false
+  - name: Restart httpd service
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: restarted
+      enabled: true
+    when: config_validation.rc != 0
+    handlers:
+    - name: Restart httpd service handler
+      ansible.builtin.service:
+        name: '{{ httpd_service_name }}'
+        state: restarted
+        enabled: true
+  - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: restart httpd service
+  - name: Restart httpd service handler
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
+      enabled: true
