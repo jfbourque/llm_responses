@@ -1,59 +1,51 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate httpd service configuration issue on RHEL server
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    options_conf_path: /etc/systemd/system/httpd.service.d/options.conf
+    httpd_service_name: httpd.service
   tasks:
-  - name: Check if httpd.conf file exists
-    ansible.builtin.stat:
-      path: '{{ httpd_conf_path }}'
-    register: httpd_conf_file
-  - name: Review and correct syntax error in httpd.conf
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      line: ''
-      state: absent
-      regexp: ^InvalidDirectiveHere
-    when: httpd_conf_file.stat.exists
-  - name: Ensure valid directives in httpd.conf
-    ansible.builtin.replace:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^.* perhaps misspelled or defined by a module not included in the server
-        configuration.*$
-      replace: ''
-    when: httpd_conf_file.stat.exists
-  - name: Remove invalid lines from httpd.conf
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      line: ''
-      state: absent
-      regexp: '^.*AH00526: Syntax error.*$'
-    when: httpd_conf_file.stat.exists
   - name: Check if options.conf file exists
     ansible.builtin.stat:
-      path: /etc/systemd/system/httpd.service.d/options.conf
+      path: '{{ options_conf_path }}'
     register: options_conf_file
-  - name: Review and correct assignments in options.conf
-    ansible.builtin.ini_file:
-      path: /etc/systemd/system/httpd.service.d/options.conf
-      section: ''
-      option: ''
-      value: ''
-      state: absent
+  - name: Review and correct configuration in options.conf
+    ansible.builtin.lineinfile:
+      path: '{{ options_conf_path }}'
+      regexp: ^[^#].*?=[^=]*$
+      line: '# \g<0>'
+      state: present
+      backrefs: true
+    when: options_conf_file.stat.exists
+  - name: Ensure correct section-based configuration
+    ansible.builtin.blockinfile:
+      path: '{{ options_conf_path }}'
+      block: '[Service]
+
+        ExecStart=/usr/sbin/httpd $OPTIONS
+
+        '
+      create: true
     when: options_conf_file.stat.exists
   - name: Reload systemd daemon
     ansible.builtin.systemd:
-      name: ''
+      name: daemon-reload
       state: reloaded
-  - name: Restart httpd service
-    ansible.builtin.service:
+  - name: Restart httpd service if changed
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: restarted
-    notify: enable and start httpd service
-  handlers:
-  - name: enable and start httpd service
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
       enabled: true
+    register: httpd_service_restart
+  - name: Verify httpd service status
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
       state: started
+      enabled: true
+    register: httpd_service_status
+  handlers:
+  - name: Restart httpd service
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: restarted
+      enabled: true
