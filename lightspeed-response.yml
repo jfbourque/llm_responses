@@ -1,41 +1,49 @@
-- name: Remediate httpd service configuration issues
+- name: Remediate httpd configuration on the affected host
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
     httpd_service_name: httpd
-    vhost_server_name: example.com
-    vhost_server_aliases:
-    - www.example.com
-    vhost_document_root: /var/www/html
+    vhost_port: 80
+    server_name: www.example.com
+    server_alias: example.com
+    document_root: /var/www/html
+    vhost_block_marker: '# BEGIN ANSIBLE MANAGED VIRTUALHOST'
+    vhost_block_marker_end: '# END ANSIBLE MANAGED VIRTUALHOST'
   tasks:
-  - name: Remove reference to missing module mod_module.so
+  - name: Ensure a backup of the original httpd configuration exists
+    ansible.builtin.copy:
+      src: '{{ httpd_conf_path }}'
+      dest: '{{ httpd_conf_path }}.bak_{{ ansible_date_time.iso8601_basic_short }}'
+      remote_src: true
+      mode: '0644'
+    when: not httpd_conf_path is path('exists')
+    tags: backup
+  - name: Remove stray ServerAlias directives outside of a <VirtualHost> block
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: ^\s*LoadModule\s+.*mod_module\.so
+      regexp: ^\s*ServerAlias\s+.*
       state: absent
     notify: Restart httpd
-  - name: Comment out stray ServerAlias directives outside <VirtualHost>
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^(\\s*)ServerAlias\\b(.*)$
-      line: \\1#ServerAlias\\2
-      backrefs: true
-      state: present
-    notify: Restart httpd
-  - name: Ensure proper VirtualHost configuration
+    tags: config
+  - name: Ensure required VirtualHost block with ServerAlias is present
     ansible.builtin.blockinfile:
       path: '{{ httpd_conf_path }}'
-      marker: '# {mark} ANSIBLE MANAGED VIRTUALHOST {{ vhost_server_name }}'
-      block: "<VirtualHost *:80>\n    ServerName {{ vhost_server_name }}\n{% for alias
-        in vhost_server_aliases %}\n    ServerAlias {{ alias }}\n{% endfor %}\n    DocumentRoot
-        \"{{ vhost_document_root }}\"\n</VirtualHost>\n"
+      marker: '{{ item.marker }}'
+      block: "<VirtualHost *:{{ vhost_port }}>\n    ServerName {{ server_name }}\n
+        \   ServerAlias {{ server_alias }}\n    DocumentRoot \"{{ document_root }}\"\n
+        \   # Additional directives can be added here\n</VirtualHost>\n"
+    loop:
+    - marker: '{{ vhost_block_marker }}'
+    - marker: '{{ vhost_block_marker_end }}'
     notify: Restart httpd
-  - name: Ensure httpd service is enabled and running
+    tags: config
+  - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       enabled: true
       state: started
+    tags: service
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
