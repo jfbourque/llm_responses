@@ -1,33 +1,61 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate httpd service on the affected host
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_module_path: /usr/lib/httpd/modules/mod_module.so
     httpd_service_name: httpd
+    missing_module_path: /usr/lib/httpd/modules/mod_module.so
+    missing_module_package: httpd-mod_module
+    loadmodule_directive: LoadModule mod_module_module {{ missing_module_path }}
+    loadmodule_regex: ^\s*LoadModule\s+mod_module_module\s+{{ missing_module_path
+      }}
   tasks:
-  - name: Check if httpd module file exists
+  - name: Check if the required module file exists
     ansible.builtin.stat:
-      path: '{{ httpd_module_path }}'
-    register: module_file_stat
-  - name: Remove httpd configuration referencing the missing module
+      path: '{{ missing_module_path }}'
+    register: module_file
+  - name: Install package that provides the missing module (if defined and file is
+      absent)
+    ansible.builtin.yum:
+      name: '{{ missing_module_package }}'
+      state: present
+    when:
+    - missing_module_package != ''
+    - not module_file.stat.exists
+    register: pkg_install
+  - name: Re-check module file after package installation
+    ansible.builtin.stat:
+      path: '{{ missing_module_path }}'
+    register: module_file_post
+    when: pkg_install is changed
+  - name: Set final module existence fact
+    ansible.builtin.set_fact:
+      module_exists: '{{ (module_file.stat.exists or (module_file_post is defined
+        and module_file_post.stat.exists)) }}'
+  - name: Ensure the LoadModule line is present when the module exists
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      line: LoadModule mod_module
-      state: absent
-    when: module_file_stat.stat.exists == False
-  - name: Install httpd module package if missing
-    ansible.builtin.dnf:
-      name: httpd-modules
+      regexp: '{{ loadmodule_regex }}'
+      line: '{{ loadmodule_directive }}'
       state: present
-    when: module_file_stat.stat.exists == False
-  - name: Ensure httpd service is running and enabled
+      insertafter: ^#?LoadModule
+    notify: Restart httpd
+    when: module_exists
+  - name: Ensure the LoadModule line is commented out when the module is missing
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf_path }}'
+      regexp: '{{ loadmodule_regex }}'
+      line: '#{{ loadmodule_directive }}'
+      state: present
+    notify: Restart httpd
+    when: not module_exists
+  - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: Restart httpd service
+  - name: Restart httpd
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
