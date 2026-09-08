@@ -2,35 +2,40 @@
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
-    options_conf_path: /etc/systemd/system/httpd.service.d/options.conf
+    httpd_config_file: /etc/httpd/conf/httpd.conf
+    httpd_service_name: httpd
   tasks:
-  - name: Correct syntax error in httpd.conf
+  - name: Correct the syntax error in the httpd configuration file
     ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
+      path: '{{ httpd_config_file }}'
       line: '# InvalidDirectiveHere'
       state: absent
       backrefs: true
-  - name: Correct syntax error in options.conf
-    ansible.builtin.replace:
-      path: '{{ options_conf_path }}'
-      regexp: ^.*Assignment outside of section.*$
-      replace: ''
-  - name: Ensure httpd service is restarted if config changes
+  - name: Ensure the httpd service is configured to start automatically
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      enabled: true
+      state: started
+  - name: Restart the httpd service if the configuration file has changed
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: restarted
       enabled: true
-      daemon_reload: true
     notify: restart httpd
   handlers:
   - name: restart httpd
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: restarted
       enabled: true
-  - name: Verify httpd service status
-    ansible.builtin.service:
-      name: httpd
+  - name: Verify the httpd service is running and enabled
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
+    register: httpd_status
+  - name: Assert httpd service status
+    ansible.builtin.assert:
+      that:
+      - httpd_status.state == "started"
+      - httpd_status.enabled == true
