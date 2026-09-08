@@ -2,44 +2,24 @@
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    invalid_directive: InvalidDirectiveHere
+    httpd_service: httpd
   tasks:
-  - name: Correct invalid directive in httpd configuration file
+  - name: Correct syntax error in httpd.conf
     ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      line: '# InvalidDirectiveHere'
+      path: '{{ httpd_conf_path }}'
+      line: '# {{ invalid_directive }} # Removed invalid directive'
+      regexp: ^.*{{ invalid_directive }}.*$
       state: present
-      create: false
-  - name: Remove invalid directive from httpd configuration file
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      line: InvalidDirectiveHere
-      state: absent
-  - name: Validate httpd configuration
-    ansible.builtin.command: httpd -t
-    register: config_validation
-    changed_when: false
-  - name: Restart httpd service
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
-    when: config_validation.rc != 0
-    handlers:
-    - name: Restart httpd service handler
-      ansible.builtin.service:
-        name: '{{ httpd_service_name }}'
-        state: restarted
-        enabled: true
+    notify: restart httpd
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: started
       enabled: true
   handlers:
-  - name: Restart httpd service handler
+  - name: restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: restarted
-      enabled: true
