@@ -1,25 +1,31 @@
-- name: Remediate httpd service issue on web.sandbox5146.opentlc.com
+- name: Remediate httpd.service failure on web.sandbox5146.opentlc.com
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    invalid_directive: InvalidDirectiveHere
-    httpd_service: httpd
+    httpd_service_name: httpd
   tasks:
   - name: Correct syntax error in httpd.conf
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      line: '# {{ invalid_directive }} # Removed invalid directive'
-      regexp: ^.*{{ invalid_directive }}.*$
+      line: '# Corrected line, removing InvalidDirectiveHere'
+      regexp: ^InvalidDirectiveHere
       state: present
-    notify: restart httpd
-  - name: Ensure httpd service is running and enabled
+    notify: restart httpd service
+  - name: Ensure correct configuration is in place
+    ansible.builtin.template:
+      src: templates/httpd.conf.j2
+      dest: '{{ httpd_conf_path }}'
+      mode: '0644'
+      backup: true
+    notify: restart httpd service
+  - name: Ensure httpd service is started and enabled
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: restart httpd
+  - name: restart httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
       state: restarted
