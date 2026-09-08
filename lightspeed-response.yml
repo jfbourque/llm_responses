@@ -3,40 +3,22 @@
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_service_name: httpd
+    invalid_directive: InvalidDirectiveHere
+    corrected_directive: '# Correct directive here'
   tasks:
-  - name: Check if httpd.conf exists
-    ansible.builtin.stat:
+  - name: Replace invalid directive in httpd.conf
+    ansible.builtin.replace:
       path: '{{ httpd_conf_path }}'
-    register: httpd_conf_stat
-  - name: Read httpd.conf and correct invalid directive
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      line: '# InvalidDirectiveHere'
-      state: present
-      create: false
-    when: httpd_conf_stat.stat.exists
-  - name: Ensure correct directive is present or add a default one
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^Listen
-      line: Listen 80
-      state: present
-      backrefs: true
-    when: httpd_conf_stat.stat.exists
-  - name: Enable and start httpd service
+      regexp: '{{ invalid_directive }}'
+      replace: '{{ corrected_directive }}'
+    notify: restart httpd
+  - name: Ensure httpd service is started and enabled
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: started
       enabled: true
   handlers:
-  - name: Restart httpd service
+  - name: restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: restarted
-    listen: restart httpd
-  - name: Check httpd service status
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: started
-      enabled: true
