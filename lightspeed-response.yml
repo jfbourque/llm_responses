@@ -1,42 +1,41 @@
-- name: Remediate httpd service issue on web.sandbox5146.opentlc.com
+- name: Remediate httpd service configuration issues
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_module_dir: /usr/lib/httpd/modules
-    problematic_module: mod_module.so
     httpd_service_name: httpd
-    required_package: httpd
+    vhost_server_name: example.com
+    vhost_server_aliases:
+    - www.example.com
+    vhost_document_root: /var/www/html
   tasks:
-  - name: Ensure the package that provides httpd modules is installed
-    ansible.builtin.yum:
-      name: '{{ required_package }}'
-      state: present
-    notify: Restart httpd
-  - name: Verify the missing module exists after package installation
-    ansible.builtin.stat:
-      path: '{{ httpd_module_dir }}/{{ problematic_module }}'
-    register: module_stat
-  - name: Fail if the required module is still absent
-    ansible.builtin.fail:
-      msg: 'Required module {{ problematic_module }} not found in {{ httpd_module_dir
-        }} after installing {{ required_package }}.
-
-        '
-    when: not module_stat.stat.exists
-  - name: Remove (or comment) the erroneous LoadModule line in httpd.conf
+  - name: Remove reference to missing module mod_module.so
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: ^\s*LoadModule\s+{{ problematic_module | regex_escape }}\s+{{ httpd_module_dir
-        | regex_escape }}/{{ problematic_module | regex_escape }}
+      regexp: ^\s*LoadModule\s+.*mod_module\.so
       state: absent
-      backup: true
     notify: Restart httpd
-  - name: Ensure the httpd service is enabled and started
+  - name: Comment out stray ServerAlias directives outside <VirtualHost>
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf_path }}'
+      regexp: ^(\\s*)ServerAlias\\b(.*)$
+      line: \\1#ServerAlias\\2
+      backrefs: true
+      state: present
+    notify: Restart httpd
+  - name: Ensure proper VirtualHost configuration
+    ansible.builtin.blockinfile:
+      path: '{{ httpd_conf_path }}'
+      marker: '# {mark} ANSIBLE MANAGED VIRTUALHOST {{ vhost_server_name }}'
+      block: "<VirtualHost *:80>\n    ServerName {{ vhost_server_name }}\n{% for alias
+        in vhost_server_aliases %}\n    ServerAlias {{ alias }}\n{% endfor %}\n    DocumentRoot
+        \"{{ vhost_document_root }}\"\n</VirtualHost>\n"
+    notify: Restart httpd
+  - name: Ensure httpd service is enabled and running
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      state: started
       enabled: true
+      state: started
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
