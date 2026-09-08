@@ -1,26 +1,15 @@
-- name: Remediate httpd configuration and ensure service is running
+- name: Remediate Apache HTTPD service failure on web server
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    server_name: www.example.com
-    server_alias: example.com www.example.org
-    document_root: /var/www/html
+    invalid_directive: InvalidDirectiveHere
   tasks:
-  - name: Comment out any ServerAlias directives outside of VirtualHost blocks
-    ansible.builtin.replace:
+  - name: Remove invalid Apache directive from configuration
+    ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: ^([ \t]*)ServerAlias[ \t]+.*$
-      replace: \1# ServerAlias removed by Ansible remediation
-      backup: true
-    notify: Restart httpd
-  - name: Ensure a proper VirtualHost block with ServerAlias exists
-    ansible.builtin.blockinfile:
-      path: '{{ httpd_conf_path }}'
-      marker: '# {mark} ANSIBLE MANAGED VIRTUALHOST'
-      block: "<VirtualHost *:80>\n    ServerName {{ server_name }}\n    ServerAlias
-        {{ server_alias }}\n    DocumentRoot {{ document_root }}\n</VirtualHost>\n"
-      insertafter: EOF
+      regexp: ^[ \t]*{{ invalid_directive }}\b.*$
+      state: absent
     notify: Restart httpd
   - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
