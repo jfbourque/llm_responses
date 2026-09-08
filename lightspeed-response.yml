@@ -1,29 +1,24 @@
-- name: Remediate httpd service issue
+- name: Correct httpd configuration and restart service
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    correct_httpd_conf_path: /path/to/correct/httpd.conf
+    httpd_service_name: httpd
   tasks:
-  - name: Check if httpd.conf file exists
-    ansible.builtin.stat:
+  - name: Correct httpd.conf syntax error
+    ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-    register: httpd_conf_file
-  - name: Correct httpd.conf file
-    ansible.builtin.copy:
-      content: '{{ lookup(''file'', correct_httpd_conf_path) }}'
-      dest: '{{ httpd_conf_path }}'
-      mode: '0644'
-    when: httpd_conf_file.stat.exists
+      regexp: ^InvalidDirectiveHere
+      line: '# InvalidDirectiveHere'
+      state: present
     notify: restart httpd
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
   - name: restart httpd
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: restarted
-      enabled: true
