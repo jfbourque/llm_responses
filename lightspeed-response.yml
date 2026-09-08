@@ -22,6 +22,11 @@
       name: httpd-modules
       state: present
     when: module_file_stat.stat.exists == False
+  - name: Restart httpd service if configuration changed
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: restarted
+    when: module_file_stat.stat.exists == False
   - name: Ensure httpd service is running and enabled
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
