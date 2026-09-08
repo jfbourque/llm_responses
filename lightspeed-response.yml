@@ -2,36 +2,41 @@
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
-    invalid_directive: InvalidDirectiveHere
-    httpd_service: httpd
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_service_name: httpd
   tasks:
-  - name: Check if httpd configuration file contains the invalid directive
+  - name: Check if httpd.conf exists
+    ansible.builtin.stat:
+      path: '{{ httpd_conf_path }}'
+    register: httpd_conf_stat
+  - name: Read httpd.conf and correct invalid directive
     ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
+      path: '{{ httpd_conf_path }}'
+      line: '# InvalidDirectiveHere'
       state: present
-      line: '{{ invalid_directive }}'
-    register: invalid_directive_present
-    failed_when: false
-  - name: Remove the invalid directive from the httpd configuration file
+      create: false
+    when: httpd_conf_stat.stat.exists
+  - name: Ensure correct directive is present or add a default one
     ansible.builtin.lineinfile:
-      path: '{{ httpd_config_file }}'
-      state: absent
-      line: '{{ invalid_directive }}'
-    when: invalid_directive_present.found > 0
-  - name: Ensure httpd service is restarted if configuration file changed
+      path: '{{ httpd_conf_path }}'
+      regexp: ^Listen
+      line: Listen 80
+      state: present
+      backrefs: true
+    when: httpd_conf_stat.stat.exists
+  - name: Enable and start httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
-      state: restarted
-      enabled: true
-    notify: restart httpd
-  - name: Verify httpd service is running and enabled
-    ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: restart httpd
+  - name: Restart httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
       state: restarted
+    listen: restart httpd
+  - name: Check httpd service status
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
