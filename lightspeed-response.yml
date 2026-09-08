@@ -3,39 +3,40 @@
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_module_alias: mod_module
-    httpd_module_path: /usr/lib/httpd/modules/mod_module.so
+    module_name: mod_module.so
+    module_path: /usr/lib/httpd/modules
+    module_full_path: '{{ module_path }}/{{ module_name }}'
+    httpd_pkg: httpd
+    module_pkg: httpd-mod_module
+    httpd_service_name: httpd
   tasks:
-  - name: Ensure required facts are gathered
-    ansible.builtin.setup: null
-  - name: Check if the required httpd module file exists
+  - name: Ensure the httpd package is installed
+    ansible.builtin.yum:
+      name: '{{ httpd_pkg }}'
+      state: present
+  - name: Check whether the required module file exists
     ansible.builtin.stat:
-      path: '{{ httpd_module_path }}'
-    register: httpd_module_stat
-  - name: Ensure the LoadModule line is present when the module file exists
+      path: '{{ module_full_path }}'
+    register: module_stat
+  - name: Install package that provides the missing module (if needed)
+    ansible.builtin.yum:
+      name: '{{ module_pkg }}'
+      state: present
+    when: not module_stat.stat.exists
+  - name: Ensure the LoadModule directive for the missing module is commented out
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: ^LoadModule\s+{{ httpd_module_alias }}\s+{{ httpd_module_path }}
-      line: LoadModule {{ httpd_module_alias }} {{ httpd_module_path }}
-      state: present
-      insertafter: EOF
-    when: httpd_module_stat.stat.exists
+      regexp: ^\s*LoadModule\s+{{ module_name }}\s+.*$
+      state: absent
+      backrefs: true
     notify: Restart httpd
-  - name: Ensure the LoadModule line is commented out when the module file is missing
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^LoadModule\s+{{ httpd_module_alias }}\s+{{ httpd_module_path }}
-      line: '# LoadModule {{ httpd_module_alias }} {{ httpd_module_path }}'
-      state: present
-    when: not httpd_module_stat.stat.exists
-    notify: Restart httpd
-  - name: Verify that the httpd service is enabled and started
+  - name: Verify httpd service is enabled and started
     ansible.builtin.service:
-      name: httpd
-      state: started
+      name: '{{ httpd_service_name }}'
       enabled: true
+      state: started
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: restarted
