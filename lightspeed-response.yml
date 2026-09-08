@@ -1,36 +1,44 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate httpd service issue on web.sandbox5146.opentlc.com
   hosts: all
   become: true
   vars:
     httpd_conf_path: /etc/httpd/conf/httpd.conf
     options_conf_path: /etc/systemd/system/httpd.service.d/options.conf
-    httpd_service_name: httpd
   tasks:
-  - name: Check and correct httpd.conf syntax error
-    lineinfile:
+  - name: Correct syntax error in httpd.conf
+    ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      line: ''
+      line: '# InvalidDirectiveHere'
       state: absent
-      regexp: ^InvalidDirectiveHere
-    notify: restart httpd
-  - name: Ensure httpd configuration is valid
-    command: httpd -t
-    register: httpd_config_test
-    changed_when: false
-  - name: Investigate and correct options.conf
-    lineinfile:
+      backrefs: true
+  - name: Correct misconfiguration in options.conf
+    ansible.builtin.replace:
       path: '{{ options_conf_path }}'
-      line: ''
-      state: absent
-      regexp: ^[[:space:]]*InvalidAssignment
-    notify: restart httpd
-  - name: Ensure httpd service is enabled and started
+      regexp: ^Assignment\s*=\s*value
+      replace: '[Service]\nAssignment=value'
+  - name: Ensure httpd service configuration is correct
+    ansible.builtin.file:
+      path: '{{ options_conf_path }}'
+      state: present
+      mode: '0644'
+  - name: Reload systemd daemon
+    ansible.builtin.systemd:
+      name: httpd
+      state: reloaded
+  handlers:
+  - name: Restart httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
+      state: restarted
+      enabled: true
+  - name: Verify httpd service status
+    ansible.builtin.service:
+      name: httpd
       state: started
       enabled: true
-  handlers:
-  - name: restart httpd
+  post_tasks:
+  - name: Check httpd service status
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
+      name: httpd
+      state: started
+      enabled: true
