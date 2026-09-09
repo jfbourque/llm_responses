@@ -1,23 +1,44 @@
-- name: Remediate Apache HTTPD service failure on web server
+- name: Remediate Apache httpd service failure on web.sandbox5146.opentlc.com
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_main_conf_paths:
+    - /etc/httpd/conf/httpd.conf
+    httpd_include_dir: /etc/httpd/conf.d
     invalid_directive: InvalidDirectiveHere
+    httpd_service_name: httpd
   tasks:
-  - name: Remove invalid Apache directive from configuration
+  - name: Remove invalid directive from main configuration files
     ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^[ \t]*{{ invalid_directive }}\b.*$
+      path: '{{ item }}'
       state: absent
+      regexp: ^[ \t]*{{ invalid_directive }}\b
+    loop: '{{ httpd_main_conf_paths }}'
+    when: item is file
+    notify: Restart httpd
+  - name: Find additional Apache configuration files
+    ansible.builtin.find:
+      paths: '{{ httpd_include_dir }}'
+      patterns: '*.conf'
+      recurse: true
+      file_type: file
+    register: httpd_extra_confs
+    when: httpd_include_dir is directory
+  - name: Remove invalid directive from additional configuration files
+    ansible.builtin.lineinfile:
+      path: '{{ item.path }}'
+      state: absent
+      regexp: ^[ \t]*{{ invalid_directive }}\b
+    loop: '{{ httpd_extra_confs.files }}'
+    when: httpd_extra_confs.matched > 0
     notify: Restart httpd
   - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: restarted
