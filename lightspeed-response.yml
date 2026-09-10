@@ -1,13 +1,13 @@
-- name: meeting the become requirement
+- name: Ansible schoolhttpd
   hosts: all
   become: true
   tasks:
-  - name: remove the invalid login directive
+  - name: Remove line containing InvalidDirectiveHere
     ansible.builtin.lineinfile:
       path: /etc/httpd/conf/httpd.conf
-      regexp: ^InvalidDirectiveHere
       state: absent
-  - name: restart httpd
+      regexp: ^InvalidDirectiveHere
+  - name: Restart httpd
     ansible.builtin.service:
       name: httpd
-      state: restart
+      state: restarted
