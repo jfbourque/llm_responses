@@ -1,13 +1,13 @@
-- name: Ansible 2.5 Playbook
+- name: Ansible Exercise 1A
   hosts: all
   become: true
   tasks:
-  - name: Remove line from a file
+  - name: RemoveLnk
     ansible.builtin.lineinfile:
       path: /etc/httpd/conf/httpd.conf
       regexp: ^InvalidDirectiveHere
       state: absent
-  - name: Restart httpd
+  - name: RestartHttpd
     ansible.builtin.service:
       name: httpd
       state: restarted
