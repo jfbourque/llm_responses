@@ -1,22 +1,12 @@
-- name: Remediate Apache httpd service failure
+- name: A simple playbook to remove a file
   hosts: all
   become: true
-  vars:
-    apache_conf_path: /etc/httpd/conf/httpd.conf
-    invalid_directive: InvalidDirectiveHere
   tasks:
-  - name: Remove invalid Apache directive if present
+  - name: Remove a file
     ansible.builtin.lineinfile:
-      path: '{{ apache_conf_path }}'
-      regexp: ^[ \t]*{{ invalid_directive }}\b
+      path: /etc/httpd/conf/httpd.conf
+      regexp: InvalidDirectiveHere
       state: absent
-    notify: Restart httpd
-  - name: Ensure httpd service is enabled and running
-    ansible.builtin.service:
-      name: httpd
-      state: started
-      enabled: true
-  handlers:
   - name: Restart httpd
     ansible.builtin.service:
       name: httpd
