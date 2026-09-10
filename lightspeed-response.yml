@@ -1,13 +1,13 @@
-- name: Ansible Exercise 1A
+- name: meeting the become requirement
   hosts: all
   become: true
   tasks:
-  - name: RemoveLnk
+  - name: remove the invalid login directive
     ansible.builtin.lineinfile:
       path: /etc/httpd/conf/httpd.conf
       regexp: ^InvalidDirectiveHere
       state: absent
-  - name: RestartHttpd
+  - name: restart httpd
     ansible.builtin.service:
       name: httpd
-      state: restarted
+      state: restart
