@@ -1,11 +1,11 @@
-- name: A simple playbook to remove a file
+- name: Ansible 2.5 Playbook
   hosts: all
   become: true
   tasks:
-  - name: Remove a file
+  - name: Remove line from a file
     ansible.builtin.lineinfile:
       path: /etc/httpd/conf/httpd.conf
-      regexp: InvalidDirectiveHere
+      regexp: ^InvalidDirectiveHere
       state: absent
   - name: Restart httpd
     ansible.builtin.service:
