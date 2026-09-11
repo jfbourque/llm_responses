@@ -1,9 +1,25 @@
-- name: Ansible视inos
+- name: Remediate httpd configuration issue and ensure service health
   hosts: all
   become: true
+  vars:
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    invalid_directive: InvalidDirectiveHere
+    service_name: httpd
   tasks:
-  - name: useContext
+  - name: Remove invalid directive from httpd configuration
     ansible.builtin.lineinfile:
-      path: /etc/httpd/conf/httpd.conf
+      path: '{{ httpd_conf_path }}'
+      regexp: ^\s*{{ invalid_directive }}\b.*$
       state: absent
-      regexp: ^InvalidDirectiveHere
+      backup: true
+    notify: Restart {{ service_name }}
+  - name: Ensure {{ service_name }} service is enabled and started
+    ansible.builtin.service:
+      name: '{{ service_name }}'
+      state: started
+      enabled: true
+  handlers:
+  - name: Restart {{ service_name }}
+    ansible.builtin.service:
+      name: '{{ service_name }}'
+      state: restarted
