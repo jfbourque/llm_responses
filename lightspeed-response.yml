@@ -1,25 +1,13 @@
-- name: Remediate Apache httpd service failure
+- name: sample at presentation
   hosts: all
   become: true
-  vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
-    invalid_directive: InvalidDirectiveHere
-    httpd_service_name: httpd
   tasks:
-  - name: Ensure invalid directive is absent from Apache configuration
+  - name: remove line
     ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^[ \t]*{{ invalid_directive }}\b
+      dest: /etc/httpd/conf/httpd.conf
+      regexp: ^InvalidDirectiveHere
       state: absent
-      backup: true
-    notify: Restart httpd
-  - name: Ensure httpd service is enabled and started
+  - name: restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      enabled: true
-      state: started
-  handlers:
-  - name: Restart httpd
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
+      name: httpd
+      state: restart
