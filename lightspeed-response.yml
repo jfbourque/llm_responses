@@ -1,36 +1,57 @@
-- name: Remediate httpd configuration issue on the affected host
+- name: Remedy httpd.service issues on the affected host
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
-    invalid_directive: InvalidDirectiveHere
     httpd_service_name: httpd
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_port: 80
+    firewall_service: http
   tasks:
-  - name: Check if a backup of the httpd config already exists
-    ansible.builtin.stat:
-      path: '{{ httpd_conf_path }}.bak'
-    register: backup_stat
-  - name: Create a backup of the current httpd configuration (if not present)
-    ansible.builtin.copy:
-      src: '{{ httpd_conf_path }}'
-      dest: '{{ httpd_conf_path }}.bak'
-      remote_src: true
-      mode: preserve
-    when: not backup_stat.stat.exists
-  - name: Remove any occurrence of the invalid directive from the httpd configuration
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^\s*{{ invalid_directive }}\b
-      state: absent
-      backup: false
+  - name: Verify httpd configuration syntax
+    ansible.builtin.command: /usr/sbin/httpd -t
+    register: httpd_config_test
+    changed_when: false
+    failed_when: httpd_config_test.rc != 0
+    tags: config_test
+  - name: Ensure firewalld is installed
+    ansible.builtin.package:
+      name: firewalld
+      state: present
+  - name: Ensure firewalld service is running and enabled
+    ansible.builtin.service:
+      name: firewalld
+      state: started
+      enabled: true
+  - name: Open HTTP port in the firewall
+    ansible.builtin.firewalld:
+      service: '{{ firewall_service }}'
+      permanent: true
+      state: enabled
+      immediate: true
+    notify: Reload firewalld
+  - name: Ensure httpd package is installed
+    ansible.builtin.package:
+      name: httpd
+      state: present
+  - name: Deploy a validated httpd configuration file
+    ansible.builtin.template:
+      src: httpd.conf.j2
+      dest: '{{ httpd_conf_path }}'
+      owner: root
+      group: root
+      mode: '0644'
     notify: Restart httpd
-  - name: Ensure the httpd service is enabled and running
+  - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      enabled: true
       state: started
+      enabled: true
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
+  - name: Reload firewalld
+    ansible.builtin.service:
+      name: firewalld
+      state: reloaded
