@@ -1,13 +1,27 @@
-- name: Ansible schoolhttpd
+- name: Remediate httpd service failure
   hosts: all
   become: true
+  vars:
+    httpd_service_name: httpd
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    invalid_directive_pattern: ^InvalidDirectiveHere
+    replacement_line: '#InvalidDirectiveHere'
   tasks:
-  - name: Remove line containing InvalidDirectiveHere
+  - name: Ensure the invalid directive is commented out
     ansible.builtin.lineinfile:
-      path: /etc/httpd/conf/httpd.conf
-      state: absent
-      regexp: ^InvalidDirectiveHere
+      path: '{{ httpd_conf_path }}'
+      regexp: '{{ invalid_directive_pattern }}'
+      line: '{{ replacement_line }}'
+      state: present
+      backrefs: true
+    notify: Restart httpd
+  - name: Ensure httpd service is enabled and running
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
+  handlers:
   - name: Restart httpd
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
       state: restarted
