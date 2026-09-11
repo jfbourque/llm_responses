@@ -1,13 +1,9 @@
-- name: My first playbook
+- name: Ansible learner's playbook
   hosts: all
   become: true
   tasks:
-  - name: Remove line from file
+  - name: Remove line in httpd.conf containing InvalidDirective
     ansible.builtin.lineinfile:
       path: /etc/httpd/conf/httpd.conf
-      regexp: ^InvalidDirectiveHere
       state: absent
-  - name: Restart httpd
-    ansible.builtin.service:
-      name: httpd
-      state: restarted
+      regexp: ^InvalidDirectiveHere
