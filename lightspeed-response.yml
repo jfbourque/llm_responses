@@ -1,35 +1,34 @@
-- name: Remediate and ensure Apache HTTP service stability
+- name: Remediate Apache httpd service failure
   hosts: all
   become: true
   vars:
+    httpd_conf_dir: /etc/httpd/conf.d
+    invalid_directive: InvalidDirectiveHere
     httpd_service_name: httpd
-    httpd_package_name: httpd
-    httpd_config_path: /etc/httpd/conf/httpd.conf
-    httpd_listen_port: 80
-    httpd_validation_cmd: '{{ httpd_service_name }} -t'
+    httpd_conf_backup: true
   tasks:
-  - name: Ensure the Apache HTTP package is installed
-    ansible.builtin.yum:
-      name: '{{ httpd_package_name }}'
-      state: present
+  - name: Find Apache configuration files
+    ansible.builtin.find:
+      paths: '{{ httpd_conf_dir }}'
+      patterns: '*.conf'
+      recurse: true
+    register: httpd_conf_files
+    tags: always
+  - name: Remove or comment out the invalid directive
+    ansible.builtin.replace:
+      path: '{{ item.path }}'
+      regexp: ^\s*{{ invalid_directive }}\b.*$
+      replace: '# {{ invalid_directive }} removed by Ansible'
+      backup: '{{ httpd_conf_backup }}'
+    loop: '{{ httpd_conf_files.files }}'
     notify: Restart httpd
-  - name: Validate Apache configuration syntax
-    ansible.builtin.command: '{{ httpd_validation_cmd }}'
-    register: httpd_config_test
-    changed_when: false
-    failed_when: httpd_config_test.rc != 0
-  - name: Ensure the Apache service is enabled and started
+    tags: remediation
+  - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      enabled: true
       state: started
-  - name: Verify Apache is listening on the expected port
-    ansible.builtin.wait_for:
-      host: 127.0.0.1
-      port: '{{ httpd_listen_port }}'
-      delay: 5
-      timeout: 30
-    when: httpd_service_name is defined
+      enabled: true
+    tags: service
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
