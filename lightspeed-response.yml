@@ -1,12 +1,12 @@
-- name: apache restart
+- name: limit example play
   hosts: all
   become: true
   tasks:
-  - name: Remove line that contains InvalidDirectiveHere
+  - name: remove a line from a file
     ansible.builtin.lineinfile:
       path: /etc/httpd/conf/httpd.conf
+      regexp: ^InvalidDirectiveHere
       state: absent
-      regexp: ^InvalidDirectiveHere$
   - name: restart httpd
     ansible.builtin.service:
       name: httpd
