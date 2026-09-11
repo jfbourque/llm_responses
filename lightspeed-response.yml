@@ -1,13 +1,13 @@
-- name: sample at presentation
+- name: My first playbook
   hosts: all
   become: true
   tasks:
-  - name: remove line
+  - name: Remove line from file
     ansible.builtin.lineinfile:
-      dest: /etc/httpd/conf/httpd.conf
+      path: /etc/httpd/conf/httpd.conf
       regexp: ^InvalidDirectiveHere
       state: absent
-  - name: restart httpd
+  - name: Restart httpd
     ansible.builtin.service:
       name: httpd
-      state: restart
+      state: restarted
