@@ -1,28 +1,29 @@
-- name: Remediate Apache service issue
+- name: Remediate httpd configuration issue on the affected host
   hosts: all
   become: true
   vars:
-    httpd_service_name: httpd
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_listen_port: 80
+    invalid_directive: InvalidDirectiveHere
+    httpd_service_name: httpd
   tasks:
-  - name: Ensure the httpd package is installed
-    ansible.builtin.yum:
-      name: httpd
-      state: present
-  - name: Ensure the Listen directive is present in the Apache configuration
+  - name: Check if a backup of the httpd config already exists
+    ansible.builtin.stat:
+      path: '{{ httpd_conf_path }}.bak'
+    register: backup_stat
+  - name: Create a backup of the current httpd configuration (if not present)
+    ansible.builtin.copy:
+      src: '{{ httpd_conf_path }}'
+      dest: '{{ httpd_conf_path }}.bak'
+      remote_src: true
+      mode: preserve
+    when: not backup_stat.stat.exists
+  - name: Remove any occurrence of the invalid directive from the httpd configuration
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: ^\s*Listen\s+
-      line: Listen {{ httpd_listen_port }}
-      state: present
-      insertafter: ^#?ServerRoot
+      regexp: ^\s*{{ invalid_directive }}\b
+      state: absent
+      backup: false
     notify: Restart httpd
-  - name: Verify Apache configuration syntax
-    ansible.builtin.command: /usr/sbin/httpd -t
-    register: httpd_configtest
-    changed_when: false
-    failed_when: httpd_configtest.rc != 0
   - name: Ensure the httpd service is enabled and running
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
