@@ -1,24 +1,35 @@
-- name: Remediate Apache configuration issue on RHEL server
+- name: Remediate Apache service issue
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
-    invalid_directive: InvalidDirectiveHere
     httpd_service_name: httpd
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_listen_port: 80
   tasks:
-  - name: Remove invalid Apache directive from configuration
+  - name: Ensure the httpd package is installed
+    ansible.builtin.yum:
+      name: httpd
+      state: present
+  - name: Ensure the Listen directive is present in the Apache configuration
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: ^\s*{{ invalid_directive }}\b.*
-      state: absent
-    notify: Restart Apache
-  - name: Ensure Apache service is enabled and started
+      regexp: ^\s*Listen\s+
+      line: Listen {{ httpd_listen_port }}
+      state: present
+      insertafter: ^#?ServerRoot
+    notify: Restart httpd
+  - name: Verify Apache configuration syntax
+    ansible.builtin.command: /usr/sbin/httpd -t
+    register: httpd_configtest
+    changed_when: false
+    failed_when: httpd_configtest.rc != 0
+  - name: Ensure the httpd service is enabled and running
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       enabled: true
       state: started
   handlers:
-  - name: Restart Apache
+  - name: Restart httpd
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
