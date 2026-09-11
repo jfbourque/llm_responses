@@ -1,40 +1,41 @@
-- name: Remediate Apache invalid directive and ensure service is running
+- name: Remediate Apache configuration issue on the affected host
   hosts: all
   become: true
   vars:
+    apache_main_conf: /etc/httpd/conf/httpd.conf
+    apache_conf_dir: /etc/httpd/conf.d
     apache_service_name: httpd
-    apache_config_root: /etc/httpd
     invalid_directive: InvalidDirectiveHere
-    directive_regex: ^(\s*){{ invalid_directive }}\b
-    directive_comment: \1# {{ invalid_directive }}
   tasks:
-  - name: Locate configuration files containing the invalid directive
-    ansible.builtin.command: 'grep -rl "{{ invalid_directive }}" "{{ apache_config_root
-      }}"
-
-      '
-    register: grep_result
-    changed_when: false
-    ignore_errors: true
-  - name: Record files with invalid directive
-    ansible.builtin.set_fact:
-      files_with_invalid_directive: '{{ grep_result.stdout_lines | default([]) }}'
-  - name: Comment out the invalid directive in each affected file
-    ansible.builtin.replace:
-      path: '{{ item }}'
-      regexp: '{{ directive_regex }}'
-      replace: '{{ directive_comment }}'
+  - name: Ensure the invalid directive is removed from the main configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ apache_main_conf }}'
+      regexp: ^\s*{{ invalid_directive }}\b.*
+      state: absent
       backup: true
-    loop: '{{ files_with_invalid_directive }}'
-    when: files_with_invalid_directive | length > 0
-    notify: Restart Apache service
-  - name: Ensure Apache service is enabled and started
+    notify: Restart Apache
+  - name: Find additional Apache configuration files in {{ apache_conf_dir }}
+    ansible.builtin.find:
+      paths: '{{ apache_conf_dir }}'
+      patterns: '*.conf'
+      file_type: file
+    register: apache_conf_files
+  - name: Ensure the invalid directive is removed from additional configuration files
+    ansible.builtin.lineinfile:
+      path: '{{ item.path }}'
+      regexp: ^\s*{{ invalid_directive }}\b.*
+      state: absent
+      backup: true
+    loop: '{{ apache_conf_files.files }}'
+    when: apache_conf_files.matched > 0
+    notify: Restart Apache
+  - name: Ensure the Apache service is enabled and running
     ansible.builtin.service:
       name: '{{ apache_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: Restart Apache service
+  - name: Restart Apache
     ansible.builtin.service:
       name: '{{ apache_service_name }}'
       state: restarted
