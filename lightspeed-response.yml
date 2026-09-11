@@ -1,41 +1,25 @@
-- name: Remediate Apache configuration issue on the affected host
+- name: Remediate Apache httpd service on RHEL host
   hosts: all
   become: true
   vars:
-    apache_main_conf: /etc/httpd/conf/httpd.conf
-    apache_conf_dir: /etc/httpd/conf.d
-    apache_service_name: httpd
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
     invalid_directive: InvalidDirectiveHere
   tasks:
-  - name: Ensure the invalid directive is removed from the main configuration file
+  - name: Comment out invalid directive in httpd configuration
     ansible.builtin.lineinfile:
-      path: '{{ apache_main_conf }}'
-      regexp: ^\s*{{ invalid_directive }}\b.*
-      state: absent
-      backup: true
-    notify: Restart Apache
-  - name: Find additional Apache configuration files in {{ apache_conf_dir }}
-    ansible.builtin.find:
-      paths: '{{ apache_conf_dir }}'
-      patterns: '*.conf'
-      file_type: file
-    register: apache_conf_files
-  - name: Ensure the invalid directive is removed from additional configuration files
-    ansible.builtin.lineinfile:
-      path: '{{ item.path }}'
-      regexp: ^\s*{{ invalid_directive }}\b.*
-      state: absent
-      backup: true
-    loop: '{{ apache_conf_files.files }}'
-    when: apache_conf_files.matched > 0
-    notify: Restart Apache
-  - name: Ensure the Apache service is enabled and running
+      path: '{{ httpd_conf_path }}'
+      regexp: ^\s*{{ invalid_directive }}\b
+      line: '# {{ invalid_directive }} # Commented by Ansible remediation'
+      state: present
+    notify: Restart httpd
+  - name: Ensure httpd service is started and enabled
     ansible.builtin.service:
-      name: '{{ apache_service_name }}'
+      name: httpd
       state: started
       enabled: true
   handlers:
-  - name: Restart Apache
+  - name: Restart httpd
     ansible.builtin.service:
-      name: '{{ apache_service_name }}'
+      name: httpd
       state: restarted
+      enabled: true
