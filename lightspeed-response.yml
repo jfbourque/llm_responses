@@ -1,9 +1,13 @@
-- name: Ansible learner's playbook
+- name: Simplified playbook to configure a host
   hosts: all
   become: true
   tasks:
-  - name: Remove line in httpd.conf containing InvalidDirective
+  - name: Remove anicios InvalidDirectiveHere
     ansible.builtin.lineinfile:
       path: /etc/httpd/conf/httpd.conf
-      state: absent
       regexp: ^InvalidDirectiveHere
+      state: absent
+  - name: Restart httpd
+    ansible.builtin.service:
+      name: httpd
+      state: restarted
