@@ -1,25 +1,40 @@
-- name: Remediate httpd configuration issue and ensure service health
+- name: Remediate Apache invalid directive and ensure service is running
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    apache_service_name: httpd
+    apache_config_root: /etc/httpd
     invalid_directive: InvalidDirectiveHere
-    service_name: httpd
+    directive_regex: ^(\s*){{ invalid_directive }}\b
+    directive_comment: \1# {{ invalid_directive }}
   tasks:
-  - name: Remove invalid directive from httpd configuration
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^\s*{{ invalid_directive }}\b.*$
-      state: absent
+  - name: Locate configuration files containing the invalid directive
+    ansible.builtin.command: 'grep -rl "{{ invalid_directive }}" "{{ apache_config_root
+      }}"
+
+      '
+    register: grep_result
+    changed_when: false
+    ignore_errors: true
+  - name: Record files with invalid directive
+    ansible.builtin.set_fact:
+      files_with_invalid_directive: '{{ grep_result.stdout_lines | default([]) }}'
+  - name: Comment out the invalid directive in each affected file
+    ansible.builtin.replace:
+      path: '{{ item }}'
+      regexp: '{{ directive_regex }}'
+      replace: '{{ directive_comment }}'
       backup: true
-    notify: Restart {{ service_name }}
-  - name: Ensure {{ service_name }} service is enabled and started
+    loop: '{{ files_with_invalid_directive }}'
+    when: files_with_invalid_directive | length > 0
+    notify: Restart Apache service
+  - name: Ensure Apache service is enabled and started
     ansible.builtin.service:
-      name: '{{ service_name }}'
+      name: '{{ apache_service_name }}'
       state: started
       enabled: true
   handlers:
-  - name: Restart {{ service_name }}
+  - name: Restart Apache service
     ansible.builtin.service:
-      name: '{{ service_name }}'
+      name: '{{ apache_service_name }}'
       state: restarted
