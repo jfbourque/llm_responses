@@ -1,21 +1,42 @@
-- name: Remediate httpd service failure
+- name: Remediate httpd service failure on web server
   hosts: all
   become: true
   vars:
-    httpd_service_name: httpd
     httpd_conf_path: /etc/httpd/conf/httpd.conf
-    invalid_directive_pattern: ^InvalidDirectiveHere
-    replacement_line: '#InvalidDirectiveHere'
+    httpd_conf_include_dir: /etc/httpd/conf.d
+    invalid_directive: InvalidDirectiveHere
+    httpd_service_name: httpd
   tasks:
-  - name: Ensure the invalid directive is commented out
+  - name: Ensure invalid directive is removed from main httpd configuration
     ansible.builtin.lineinfile:
       path: '{{ httpd_conf_path }}'
-      regexp: '{{ invalid_directive_pattern }}'
-      line: '{{ replacement_line }}'
-      state: present
-      backrefs: true
+      regexp: ^\s*{{ invalid_directive }}\b.*$
+      state: absent
+      backup: true
     notify: Restart httpd
-  - name: Ensure httpd service is enabled and running
+    when: invalid_directive is defined
+  - name: Ensure invalid directive is removed from included configuration files
+    ansible.builtin.find:
+      paths: '{{ httpd_conf_include_dir }}'
+      patterns: '*.conf'
+      recurse: true
+    register: httpd_conf_includes
+  - name: Remove invalid directive from each included configuration file
+    ansible.builtin.lineinfile:
+      path: '{{ item.path }}'
+      regexp: ^\s*{{ invalid_directive }}\b.*$
+      state: absent
+      backup: true
+    loop: '{{ httpd_conf_includes.files }}'
+    notify: Restart httpd
+    when: httpd_conf_includes.files | length > 0
+  - name: Verify httpd configuration syntax after remediation
+    ansible.builtin.command: httpd -t
+    register: httpd_syntax_check
+    changed_when: false
+    failed_when: httpd_syntax_check.rc != 0
+    ignore_errors: false
+  - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
