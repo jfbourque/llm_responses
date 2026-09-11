@@ -1,57 +1,37 @@
-- name: Remedy httpd.service issues on the affected host
+- name: Remediate and ensure Apache HTTP service stability
   hosts: all
   become: true
   vars:
     httpd_service_name: httpd
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
-    httpd_port: 80
-    firewall_service: http
+    httpd_package_name: httpd
+    httpd_config_path: /etc/httpd/conf/httpd.conf
+    httpd_listen_port: 80
+    httpd_validation_cmd: '{{ httpd_service_name }} -t'
   tasks:
-  - name: Verify httpd configuration syntax
-    ansible.builtin.command: /usr/sbin/httpd -t
+  - name: Ensure the Apache HTTP package is installed
+    ansible.builtin.yum:
+      name: '{{ httpd_package_name }}'
+      state: present
+    notify: Restart httpd
+  - name: Validate Apache configuration syntax
+    ansible.builtin.command: '{{ httpd_validation_cmd }}'
     register: httpd_config_test
     changed_when: false
     failed_when: httpd_config_test.rc != 0
-    tags: config_test
-  - name: Ensure firewalld is installed
-    ansible.builtin.package:
-      name: firewalld
-      state: present
-  - name: Ensure firewalld service is running and enabled
-    ansible.builtin.service:
-      name: firewalld
-      state: started
-      enabled: true
-  - name: Open HTTP port in the firewall
-    ansible.builtin.firewalld:
-      service: '{{ firewall_service }}'
-      permanent: true
-      state: enabled
-      immediate: true
-    notify: Reload firewalld
-  - name: Ensure httpd package is installed
-    ansible.builtin.package:
-      name: httpd
-      state: present
-  - name: Deploy a validated httpd configuration file
-    ansible.builtin.template:
-      src: httpd.conf.j2
-      dest: '{{ httpd_conf_path }}'
-      owner: root
-      group: root
-      mode: '0644'
-    notify: Restart httpd
-  - name: Ensure httpd service is enabled and started
+  - name: Ensure the Apache service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      state: started
       enabled: true
+      state: started
+  - name: Verify Apache is listening on the expected port
+    ansible.builtin.wait_for:
+      host: 127.0.0.1
+      port: '{{ httpd_listen_port }}'
+      delay: 5
+      timeout: 30
+    when: httpd_service_name is defined
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
-  - name: Reload firewalld
-    ansible.builtin.service:
-      name: firewalld
-      state: reloaded
