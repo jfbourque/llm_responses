@@ -1,25 +1,25 @@
-- name: Remediate Apache HTTPD configuration issue on the affected host
+- name: Remediate Apache configuration issue on web.sandbox5146.opentlc.com
   hosts: all
   become: true
-  gather_facts: false
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    apache_conf_path: /etc/httpd/conf/httpd.conf
     invalid_directive: InvalidDirectiveHere
+    apache_service_name: httpd
   tasks:
-  - name: Remove the invalid Apache directive from the configuration
+  - name: Ensure the invalid directive is absent from the Apache configuration
     ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^\\s*{{ invalid_directive }}\\b
+      path: '{{ apache_conf_path }}'
+      regexp: ^[ \t]*{{ invalid_directive }}\b.*$
       state: absent
       backup: true
-    notify: Restart httpd
-  - name: Ensure the httpd service is enabled and running
+    notify: Restart Apache
+  - name: Ensure Apache service is enabled and started
     ansible.builtin.service:
-      name: httpd
+      name: '{{ apache_service_name }}'
       enabled: true
       state: started
   handlers:
-  - name: Restart httpd
+  - name: Restart Apache
     ansible.builtin.service:
-      name: httpd
+      name: '{{ apache_service_name }}'
       state: restarted
