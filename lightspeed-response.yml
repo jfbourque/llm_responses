@@ -2,33 +2,22 @@
   hosts: all
   become: true
   vars:
-    httpd_conf_dir: /etc/httpd/conf.d
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
     invalid_directive: InvalidDirectiveHere
     httpd_service_name: httpd
-    httpd_conf_backup: true
   tasks:
-  - name: Find Apache configuration files
-    ansible.builtin.find:
-      paths: '{{ httpd_conf_dir }}'
-      patterns: '*.conf'
-      recurse: true
-    register: httpd_conf_files
-    tags: always
-  - name: Remove or comment out the invalid directive
-    ansible.builtin.replace:
-      path: '{{ item.path }}'
-      regexp: ^\s*{{ invalid_directive }}\b.*$
-      replace: '# {{ invalid_directive }} removed by Ansible'
-      backup: '{{ httpd_conf_backup }}'
-    loop: '{{ httpd_conf_files.files }}'
+  - name: Ensure invalid directive is absent from Apache configuration
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf_path }}'
+      regexp: ^[ \t]*{{ invalid_directive }}\b
+      state: absent
+      backup: true
     notify: Restart httpd
-    tags: remediation
   - name: Ensure httpd service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      state: started
       enabled: true
-    tags: service
+      state: started
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
