@@ -1,13 +1,9 @@
-- name: CONFIGUREscrape_configs
+- name: Ansible视inos
   hosts: all
   become: true
   tasks:
-  - name: Remove line that contains InvalidDirectiveHere
+  - name: useContext
     ansible.builtin.lineinfile:
       path: /etc/httpd/conf/httpd.conf
       state: absent
       regexp: ^InvalidDirectiveHere
-  - name: Restart httpd
-    ansible.builtin.service:
-      name: httpd
-      state: restarted
