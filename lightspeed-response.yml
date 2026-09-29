@@ -1,13 +1,24 @@
-- name: limit example play
+- name: Remediate Apache httpd service failure due to invalid directive
   hosts: all
   become: true
+  vars:
+    httpd_service_name: httpd
+    httpd_main_conf: /etc/httpd/conf/httpd.conf
+    invalid_directive: InvalidDirectiveHere
   tasks:
-  - name: remove a line from a file
+  - name: Ensure the invalid directive is removed from the main httpd configuration
     ansible.builtin.lineinfile:
-      path: /etc/httpd/conf/httpd.conf
-      regexp: ^InvalidDirectiveHere
+      path: '{{ httpd_main_conf }}'
+      regexp: ^\s*{{ invalid_directive }}\b
       state: absent
-  - name: restart httpd
+    notify: Restart {{ httpd_service_name }}
+  - name: Ensure the httpd service is enabled and started
     ansible.builtin.service:
-      name: httpd
+      name: '{{ httpd_service_name }}'
+      enabled: true
+      state: started
+  handlers:
+  - name: Restart {{ httpd_service_name }}
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
       state: restarted
