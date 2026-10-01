@@ -2,51 +2,44 @@
   hosts: all
   become: true
   vars:
-    httpd_config_dir: /etc/httpd
-    httpd_conf_dir: '{{ httpd_config_dir }}/conf'
-    httpd_conf_d_dir: '{{ httpd_config_dir }}/conf.d'
-    httpd_log_dir: /var/log/httpd
+    httpd_config_file: /etc/httpd/conf/httpd.conf
+    httpd_error_log: /var/log/httpd/error_log
   tasks:
-  - name: Check if httpd is installed
+  - name: Check and install required packages
     ansible.builtin.package:
       name: httpd
       state: present
-  - name: Enable and start httpd service
-    ansible.builtin.systemd:
-      name: httpd
-      state: started
-      enabled: true
-  - name: Check httpd service status
-    ansible.builtin.systemd:
-      name: httpd
-      state: started
-    register: httpd_status
-  - name: Check for configuration errors
-    ansible.builtin.command:
-      cmd: apachectl configtest
+  - name: Check and fix httpd configuration syntax errors
+    ansible.builtin.command: httpd -t
     register: httpd_config_test
-    failed_when: httpd_config_test.rc != 0 and httpd_config_test.rc != 4
-  - name: Review and fix configuration files if needed
+    failed_when: httpd_config_test.rc != 0
+  - name: Check and fix httpd error log permissions
     ansible.builtin.file:
-      path: '{{ item }}'
-      state: directory
-      mode: '0755'
-    loop:
-    - '{{ httpd_conf_dir }}'
-    - '{{ httpd_conf_d_dir }}'
-  - name: Ensure log directories exist
-    ansible.builtin.file:
-      path: '{{ httpd_log_dir }}'
-      state: directory
-      mode: '0755'
-  - name: Restart httpd service if config has changed
+      path: '{{ httpd_error_log }}'
+      owner: root
+      group: root
+      mode: '0644'
+  - name: Check journal logs for httpd errors
+    ansible.builtin.command: journalctl -u httpd
+    register: httpd_journal_logs
+  - name: Display httpd journal logs
+    ansible.builtin.debug:
+      msg: '{{ httpd_journal_logs.stdout }}'
+  - name: Restart httpd service if configuration has changed
     ansible.builtin.service:
       name: httpd
       state: restarted
-    when: httpd_config_test.changed
+      enabled: true
     notify: restart httpd
+  - name: Verify httpd service is running and enabled
+    ansible.builtin.service:
+      name: httpd
+      state: started
+      enabled: true
+    register: httpd_service_status
   handlers:
   - name: restart httpd
     ansible.builtin.service:
       name: httpd
       state: restarted
+      enabled: true
