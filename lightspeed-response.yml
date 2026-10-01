@@ -3,46 +3,44 @@
   become: true
   vars:
     httpd_service_name: httpd
-    dbus_service_name: dbus
-    systemd_service_name: systemd
+    httpd_config_file: /etc/httpd/conf/httpd.conf
   tasks:
-  - name: Check if systemd is running
-    ansible.builtin.service:
-      name: '{{ systemd_service_name }}'
-      state: started
-      enabled: true
-  - name: Verify and restart dbus
-    ansible.builtin.service:
-      name: '{{ dbus_service_name }}'
-      state: restarted
-      enabled: true
-  - name: Reboot the system if necessary
-    ansible.builtin.reboot:
-      msg: Rebooting to ensure a clean start
-      connect_timeout: 5
-      reboot_timeout: 300
-      pre_reboot_delay: 0
-      post_reboot_delay: 60
-      test_command: uptime
   - name: Check if httpd service is running
-    ansible.builtin.service:
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-  - name: Verify httpd service status
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: started
-      enabled: true
-    register: httpd_status
-  - name: Check and restart httpd if it's not running
+  - name: Check if httpd config file exists
+    ansible.builtin.stat:
+      path: '{{ httpd_config_file }}'
+    register: httpd_config_file_stat
+  - name: Validate httpd config file syntax
+    ansible.builtin.command:
+      cmd: httpd -t
+    register: httpd_config_syntax_check
+    failed_when: httpd_config_syntax_check.rc != 0
+  - name: Restart httpd service if config file has changed
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
       enabled: true
-    when: httpd_status.status != "started"
+    when: httpd_config_file_stat.stat.mtime != 0
+  - name: Verify httpd service status
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
+    register: httpd_service_status
+  - name: Check network connectivity to AAP server
+    ansible.builtin.ping:
+      host: aap-server
+    register: aap_server_ping
+    failed_when: aap_server_ping.ping != 0
+  - name: Validate authentication tokens
+    ansible.builtin.debug:
+      msg: Token validation not implemented
   handlers:
-  - name: restart httpd
+  - name: restart httpd service
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
