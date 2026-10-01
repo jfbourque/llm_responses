@@ -1,24 +1,41 @@
-- name: Remediate Apache httpd service failure due to invalid directive
+- name: Remediate httpd service issue on RHEL server
   hosts: all
   become: true
   vars:
     httpd_service_name: httpd
-    httpd_main_conf: /etc/httpd/conf/httpd.conf
-    invalid_directive: InvalidDirectiveHere
+    sshd_service_name: sshd
   tasks:
-  - name: Ensure the invalid directive is removed from the main httpd configuration
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_main_conf }}'
-      regexp: ^\s*{{ invalid_directive }}\b
-      state: absent
-    notify: Restart {{ httpd_service_name }}
-  - name: Ensure the httpd service is enabled and started
+  - name: Ensure sshd service is running and enabled
+    ansible.builtin.service:
+      name: '{{ sshd_service_name }}'
+      state: started
+      enabled: true
+  - name: Verify network connectivity by pinging a known host
+    ansible.builtin.ping:
+      timeout: 10
+  - name: Check if httpd service is running
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      enabled: true
       state: started
-  handlers:
-  - name: Restart {{ httpd_service_name }}
+      enabled: true
+    register: httpd_status
+  - name: Restart httpd service if it's not running
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
+    when: httpd_status is changed or httpd_status is not defined
+  - name: Ensure firewall allows http and https traffic
+    ansible.builtin.firewalld:
+      zone: public
+      service: '{{ item }}'
+      state: enabled
+      permanent: true
+    loop:
+    - http
+    - https
+    notify: reload firewalld
+  handlers:
+  - name: reload firewalld
+    ansible.builtin.service:
+      name: firewalld
+      state: reloaded
