@@ -1,45 +1,61 @@
-- name: Remediate httpd service issue on arduino.jfbourque.ca
+- name: Remediate httpd service issue on RHEL server
   hosts: all
   become: true
   vars:
-    httpd_service_name: httpd
     httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_log_file: /var/log/httpd/error_log
+    httpd_service_name: httpd
+    firewalld_service: httpd
   tasks:
-  - name: Check if httpd service is running
-    ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
+  - name: Check if firewalld is installed and running
+    ansible.builtin.service:
+      name: firewalld
       state: started
       enabled: true
-  - name: Check if httpd service is enabled
-    ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
-      state: started
-      enabled: true
-      check: true
-  - name: Verify network connectivity
-    ansible.builtin.ping:
-      timeout: 10
-  - name: Check and update authentication tokens (example, adjust as necessary)
-    ansible.builtin.debug:
-      msg: Token update task not implemented, add token update logic here
-  - name: Review server configuration for recent changes (example, adjust as necessary)
-    ansible.builtin.debug:
-      msg: Server config review task not implemented, add config review logic here
-  - name: Manually check and start httpd service if not running
-    ansible.builtin.systemd:
-      name: '{{ httpd_service_name }}'
-      state: started
-      enabled: true
-  - name: Check httpd service logs for specific error messages
+    register: firewalld_status
+  - name: Allow httpd traffic through firewalld
+    ansible.builtin.firewalld:
+      service: '{{ firewalld_service }}'
+      zone: public
+      state: enabled
+    when: firewalld_status is changed and firewalld_status.state == 'started'
+  - name: Check SELinux status
     ansible.builtin.command:
-      cmd: journalctl -u "{{ httpd_service_name }}"
-      register: httpd_logs
-  - name: Display httpd service logs
-    ansible.builtin.debug:
-      var: httpd_logs.stdout
-  handlers:
-  - name: Restart httpd service
-    ansible.builtin.systemd:
+      cmd: sestatus
+    register: selinux_status
+  - name: Set SELinux permissive mode temporarily for remediation
+    ansible.builtin.command:
+      cmd: setenforce 0
+    when: selinux_status.stdout.find('Enforcing') != -1
+    register: selinux_mode_change
+  - name: Ensure httpd service is configured to start on boot
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
+  - name: Check if httpd is running
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: started
+  - name: Restart httpd service if it's not running
+    ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
+  - name: Validate httpd configuration
+    ansible.builtin.command:
+      cmd: httpd -t
+    register: httpd_config_validation
+  - name: Check and fix httpd configuration file permissions
+    ansible.builtin.file:
+      path: '{{ httpd_config_file }}'
+      owner: root
+      group: root
+      mode: '0644'
+  handlers:
+  - name: restart httpd
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
+      state: restarted
+  - name: setenforce 1
+    ansible.builtin.command:
+      cmd: setenforce 1
+    when: selinux_mode_change is changed
