@@ -3,29 +3,24 @@
   become: true
   vars:
     httpd_config_file: /etc/httpd/conf/httpd.conf
+    httpd_error_log: /var/log/httpd/error_log
     httpd_service_name: httpd
   tasks:
-  - name: Check if httpd service is running
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: started
-      enabled: true
-    register: service_status
-    ignore_errors: true
-  - name: Check and fix httpd configuration
+  - name: Check and install required packages
+    ansible.builtin.package:
+      name: httpd
+      state: present
+  - name: Check httpd configuration for syntax errors
     ansible.builtin.command: httpd -t
-    register: config_check
-    ignore_errors: true
-  - name: Check journal logs for httpd errors
-    ansible.builtin.command: journalctl -u "{{ httpd_service_name }}"
-    become: true
-    register: journal_logs
-  - name: Restart httpd service if configuration is invalid
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-    when: config_check.rc != 0
-  - name: Ensure httpd service is started and enabled
+    register: httpd_config_test
+    failed_when: httpd_config_test.rc != 0
+  - name: Check and rotate httpd logs if necessary
+    ansible.builtin.file:
+      path: '{{ httpd_error_log }}'
+      state: file
+      mode: '0640'
+    notify: restart httpd
+  - name: Ensure httpd service is enabled and running
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: started
