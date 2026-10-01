@@ -1,47 +1,45 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate httpd service issue on arduino.jfbourque.ca
   hosts: all
   become: true
   vars:
     httpd_service_name: httpd
     httpd_config_file: /etc/httpd/conf/httpd.conf
+    httpd_log_file: /var/log/httpd/error_log
   tasks:
   - name: Check if httpd service is running
     ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-  - name: Check if httpd config file exists
-    ansible.builtin.stat:
-      path: '{{ httpd_config_file }}'
-    register: httpd_config_file_stat
-  - name: Validate httpd config file syntax
-    ansible.builtin.command:
-      cmd: httpd -t
-    register: httpd_config_syntax_check
-    failed_when: httpd_config_syntax_check.rc != 0
-  - name: Restart httpd service if config file has changed
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: restarted
-      enabled: true
-    when: httpd_config_file_stat.stat.mtime != 0
-  - name: Verify httpd service status
+  - name: Check if httpd service is enabled
     ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-    register: httpd_service_status
-  - name: Check network connectivity to AAP server
+      check: true
+  - name: Verify network connectivity
     ansible.builtin.ping:
-      host: aap-server
-    register: aap_server_ping
-    failed_when: aap_server_ping.ping != 0
-  - name: Validate authentication tokens
+      timeout: 10
+  - name: Check and update authentication tokens (example, adjust as necessary)
     ansible.builtin.debug:
-      msg: Token validation not implemented
+      msg: Token update task not implemented, add token update logic here
+  - name: Review server configuration for recent changes (example, adjust as necessary)
+    ansible.builtin.debug:
+      msg: Server config review task not implemented, add config review logic here
+  - name: Manually check and start httpd service if not running
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
+  - name: Check httpd service logs for specific error messages
+    ansible.builtin.command:
+      cmd: journalctl -u "{{ httpd_service_name }}"
+      register: httpd_logs
+  - name: Display httpd service logs
+    ansible.builtin.debug:
+      var: httpd_logs.stdout
   handlers:
-  - name: restart httpd service
-    ansible.builtin.service:
+  - name: Restart httpd service
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: restarted
-      enabled: true
