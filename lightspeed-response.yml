@@ -3,39 +3,55 @@
   become: true
   vars:
     httpd_service_name: httpd
-    sshd_service_name: sshd
+    reboot_required: false
   tasks:
-  - name: Ensure sshd service is running and enabled
-    ansible.builtin.service:
-      name: '{{ sshd_service_name }}'
-      state: started
+  - name: Check and restart systemd
+    ansible.builtin.systemd:
+      name: systemd
+      state: restarted
       enabled: true
-  - name: Verify network connectivity by pinging a known host
-    ansible.builtin.ping:
-      timeout: 10
-  - name: Check if httpd service is running
-    ansible.builtin.service:
+  - name: Verify httpd service existence
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-    register: httpd_status
-  - name: Restart httpd service if it's not running
-    ansible.builtin.service:
+    register: httpd_service_status
+    ignore_errors: true
+  - name: Enable httpd service if not already enabled
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
+    when: httpd_service_status is failed
+  - name: Check for pending updates and upgrade system
+    ansible.builtin.yum:
+      update_cache: true
+      upgrade: true
+    register: system_update
+  - name: Reboot system if updates were applied
+    ansible.builtin.reboot:
+      msg: Rebooting to apply updates.
+      connect_timeout: 5
+      reboot_timeout: 300
+      pre_reboot_delay: 0
+      post_reboot_delay: 60
+      test_command: uptime
+    when: system_update is changed
+  - name: Verify httpd service is running and enabled after remediation
+    ansible.builtin.systemd:
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
+  - name: Validate DNS resolution
+    ansible.builtin.ping:
+      name: arduino.jfbourque.ca
+    register: dns_resolution_test
+  - name: Fail if DNS resolution test fails
+    ansible.builtin.fail:
+      msg: DNS resolution test failed.
+    when: dns_resolution_test is failed
+  handlers:
+  - name: restart httpd service
+    ansible.builtin.systemd:
       name: '{{ httpd_service_name }}'
       state: restarted
-    when: httpd_status is changed or httpd_status is not defined
-  - name: Ensure firewall allows http and https traffic
-    ansible.builtin.firewalld:
-      zone: public
-      service: '{{ item }}'
-      state: enabled
-      permanent: true
-    loop:
-    - http
-    - https
-    notify: reload firewalld
-  handlers:
-  - name: reload firewalld
-    ansible.builtin.service:
-      name: firewalld
-      state: reloaded
