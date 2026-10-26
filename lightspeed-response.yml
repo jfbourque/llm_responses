@@ -1,23 +1,33 @@
-- name: Remediate Apache configuration issue on the affected host
+- name: Remediate Apache httpd service configuration error
   hosts: all
   become: true
   vars:
-    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    httpd_conf_dir: /etc/httpd/conf.d
     invalid_directive: InvalidDirectiveHere
     httpd_service_name: httpd
+    replacement_comment: '# Removed invalid directive by Ansible remediation'
   tasks:
-  - name: Remove any occurrences of the invalid directive from the Apache config
-    ansible.builtin.lineinfile:
-      path: '{{ httpd_conf_path }}'
-      regexp: ^[\s]*{{ invalid_directive }}\b
-      state: absent
+  - name: Locate configuration files containing the invalid directive
+    ansible.builtin.find:
+      paths: '{{ httpd_conf_dir }}'
+      patterns: '*.conf'
+      recurse: true
+      contains: '{{ invalid_directive }}'
+    register: conf_files
+  - name: Remove invalid directive from configuration files
+    ansible.builtin.replace:
+      path: '{{ item.path }}'
+      regexp: ^.*{{ invalid_directive }}.*$
+      replace: '{{ replacement_comment }}'
       backup: true
+    loop: '{{ conf_files.files }}'
+    when: conf_files.matched > 0
     notify: Restart httpd
-  - name: Ensure the Apache service is enabled and running
+  - name: Ensure {{ httpd_service_name }} service is enabled and started
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      enabled: true
       state: started
+      enabled: true
   handlers:
   - name: Restart httpd
     ansible.builtin.service:
