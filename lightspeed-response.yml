@@ -1,32 +1,25 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate Apache configuration issue on the affected host
   hosts: all
   become: true
   vars:
-    httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_error_log: /var/log/httpd/error_log
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    invalid_directive: InvalidDirectiveHere
     httpd_service_name: httpd
   tasks:
-  - name: Check and install required packages
-    ansible.builtin.package:
-      name: httpd
-      state: present
-  - name: Check httpd configuration for syntax errors
-    ansible.builtin.command: httpd -t
-    register: httpd_config_test
-    failed_when: httpd_config_test.rc != 0
-  - name: Check and rotate httpd logs if necessary
-    ansible.builtin.file:
-      path: '{{ httpd_error_log }}'
-      state: file
-      mode: '0640'
-    notify: restart httpd
-  - name: Ensure httpd service is enabled and running
+  - name: Remove any occurrences of the invalid directive from the Apache config
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf_path }}'
+      regexp: ^[\s]*{{ invalid_directive }}\b
+      state: absent
+      backup: true
+    notify: Restart httpd
+  - name: Ensure the Apache service is enabled and running
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
-      state: started
       enabled: true
+      state: started
   handlers:
-  - name: restart httpd
+  - name: Restart httpd
     ansible.builtin.service:
       name: '{{ httpd_service_name }}'
       state: restarted
