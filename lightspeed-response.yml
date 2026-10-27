@@ -2,38 +2,48 @@
   hosts: all
   become: true
   vars:
+    httpd_service_name: httpd
     httpd_config_file: /etc/httpd/conf/httpd.conf
     httpd_error_log: /var/log/httpd/error_log
-    httpd_service: httpd
   tasks:
-  - name: Check and correct httpd configuration syntax errors
-    command: httpd -t
-    register: httpd_config_test
-    failed_when: httpd_config_test.rc != 0
-    changed_when: false
-  - name: Check for error messages in /var/log/httpd/error_log
-    command: grep -E 'error|exception' "{{ httpd_error_log }}"
-    register: httpd_error_messages
-    changed_when: false
-  - name: Check if httpd service is running
+  - name: Check and install httpd if not present
+    ansible.builtin.package:
+      name: httpd
+      state: present
+  - name: Check httpd configuration
+    ansible.builtin.command: httpd -t
+    register: httpd_config_check
+    failed_when: httpd_config_check.rc != 0
+  - name: Check and fix permissions on httpd config file
+    ansible.builtin.file:
+      path: '{{ httpd_config_file }}'
+      owner: root
+      group: root
+      mode: '0644'
+  - name: Check and fix permissions on httpd error log
+    ansible.builtin.file:
+      path: '{{ httpd_error_log }}'
+      owner: root
+      group: root
+      mode: '0640'
+  - name: Enable and start httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
+      state: started
+      enabled: true
+  - name: Check httpd service status
+    ansible.builtin.service:
+      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
     register: httpd_service_status
-  - name: Restart httpd service if it's not running
-    ansible.builtin.service:
-      name: '{{ httpd_service }}'
-      state: restarted
-      enabled: true
-    when: httpd_service_status is changed or httpd_config_test.rc != 0
-  - name: Check journal logs with elevated privileges
-    ansible.builtin.command: journalctl -u "{{ httpd_service }}"
-    register: journal_logs
-    changed_when: false
+  - name: View latest error messages in httpd error log
+    ansible.builtin.command: tail -f "{{ httpd_error_log }}"
+    async: 1000
+    poll: 0
+    become: true
   handlers:
   - name: restart httpd service
     ansible.builtin.service:
-      name: '{{ httpd_service }}'
+      name: '{{ httpd_service_name }}'
       state: restarted
-      enabled: true
