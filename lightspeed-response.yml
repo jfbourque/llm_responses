@@ -1,49 +1,23 @@
-- name: Remediate httpd service issue on RHEL server
+- name: Remediate Apache httpd service failure on web.sandbox5146.opentlc.com
   hosts: all
   become: true
   vars:
-    httpd_service_name: httpd
-    httpd_config_file: /etc/httpd/conf/httpd.conf
-    httpd_error_log: /var/log/httpd/error_log
+    httpd_conf_path: /etc/httpd/conf/httpd.conf
+    invalid_directive: InvalidDirectiveHere
   tasks:
-  - name: Check and install httpd if not present
-    ansible.builtin.package:
+  - name: Ensure the invalid directive is absent from the Apache configuration
+    ansible.builtin.lineinfile:
+      path: '{{ httpd_conf_path }}'
+      regexp: ^[\s#]*{{ invalid_directive }}\b
+      state: absent
+    notify: Restart httpd
+  - name: Ensure httpd service is enabled and started
+    ansible.builtin.service:
       name: httpd
-      state: present
-  - name: Check httpd configuration
-    ansible.builtin.command: httpd -t
-    register: httpd_config_check
-    failed_when: httpd_config_check.rc != 0
-  - name: Check and fix permissions on httpd config file
-    ansible.builtin.file:
-      path: '{{ httpd_config_file }}'
-      owner: root
-      group: root
-      mode: '0644'
-  - name: Check and fix permissions on httpd error log
-    ansible.builtin.file:
-      path: '{{ httpd_error_log }}'
-      owner: root
-      group: root
-      mode: '0640'
-  - name: Enable and start httpd service
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
       state: started
       enabled: true
-  - name: Check httpd service status
-    ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
-      state: started
-      enabled: true
-    register: httpd_service_status
-  - name: View latest error messages in httpd error log
-    ansible.builtin.command: tail -f "{{ httpd_error_log }}"
-    async: 1000
-    poll: 0
-    become: true
   handlers:
-  - name: restart httpd service
+  - name: Restart httpd
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: httpd
       state: restarted
