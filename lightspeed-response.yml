@@ -1,35 +1,39 @@
-- name: Remediate Apache httpd service configuration error
+- name: Remediate httpd service issue on RHEL server
   hosts: all
   become: true
   vars:
-    httpd_conf_dir: /etc/httpd/conf.d
-    invalid_directive: InvalidDirectiveHere
-    httpd_service_name: httpd
-    replacement_comment: '# Removed invalid directive by Ansible remediation'
+    httpd_config_file: /etc/httpd/conf/httpd.conf
+    httpd_error_log: /var/log/httpd/error_log
+    httpd_service: httpd
   tasks:
-  - name: Locate configuration files containing the invalid directive
-    ansible.builtin.find:
-      paths: '{{ httpd_conf_dir }}'
-      patterns: '*.conf'
-      recurse: true
-      contains: '{{ invalid_directive }}'
-    register: conf_files
-  - name: Remove invalid directive from configuration files
-    ansible.builtin.replace:
-      path: '{{ item.path }}'
-      regexp: ^.*{{ invalid_directive }}.*$
-      replace: '{{ replacement_comment }}'
-      backup: true
-    loop: '{{ conf_files.files }}'
-    when: conf_files.matched > 0
-    notify: Restart httpd
-  - name: Ensure {{ httpd_service_name }} service is enabled and started
+  - name: Check and correct httpd configuration syntax errors
+    command: httpd -t
+    register: httpd_config_test
+    failed_when: httpd_config_test.rc != 0
+    changed_when: false
+  - name: Check for error messages in /var/log/httpd/error_log
+    command: grep -E 'error|exception' "{{ httpd_error_log }}"
+    register: httpd_error_messages
+    changed_when: false
+  - name: Check if httpd service is running
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: started
       enabled: true
-  handlers:
-  - name: Restart httpd
+    register: httpd_service_status
+  - name: Restart httpd service if it's not running
     ansible.builtin.service:
-      name: '{{ httpd_service_name }}'
+      name: '{{ httpd_service }}'
       state: restarted
+      enabled: true
+    when: httpd_service_status is changed or httpd_config_test.rc != 0
+  - name: Check journal logs with elevated privileges
+    ansible.builtin.command: journalctl -u "{{ httpd_service }}"
+    register: journal_logs
+    changed_when: false
+  handlers:
+  - name: restart httpd service
+    ansible.builtin.service:
+      name: '{{ httpd_service }}'
+      state: restarted
+      enabled: true
